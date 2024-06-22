@@ -67,7 +67,7 @@ TARGET_SONAR_1 = make_target_sonar_1()
 rule all_sonar_1:
     input: TARGET_SONAR_1
 
-rule all_igdiscover_run:
+rule all_igdiscover:
     input: TARGET_IGDISCOVER
 
 rule all_trim:
@@ -208,7 +208,7 @@ rule igdiscover_init:
             sed -i 's/^stranded: false$/stranded: {params.stranded}/' {output.yaml}
         """
 
-rule igdiscover_run:
+rule igdiscover:
     output:
         stats="analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json",
         db_v="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/V.fasta",
