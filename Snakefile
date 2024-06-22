@@ -105,7 +105,7 @@ rule merge:
     shell:
         """
             conda list --explicit > {log.conda}
-            igseq merge -t {threads} --outdir $(dirname {output.r1}) {input.r1} {input.r2}
+            igseq merge -t {threads} --outdir $(dirname {output.fqgz}) {input.r1} {input.r2}
         """
 
 ### IgDiscover
