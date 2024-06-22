@@ -59,6 +59,7 @@ def make_target_sonar_1():
         "analysis/sonar/{subject}.{locus}/{specimen}/"
         "output/tables/{specimen}_rearrangements.tsv", zip, **attrs)
 
+# TODO all_germline and all_germline_genbank
 TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
 TARGET_IGDISCOVER = make_target_igdiscover()
@@ -244,6 +245,27 @@ rule germline:
             cp {input.D} {output.D}
             cp {input.J} {output.J}
         """
+
+rule germline_genbank:
+    """Prep germline files with the existing V and J from our GenBank entries"""
+    output:
+        V="analysis/germline-genbank/{subject}.{locus}/V.fasta",
+        D="analysis/germline-genbank/{subject}.{locus}/D.fasta",
+        J="analysis/germline-genbank/{subject}.{locus}/J.fasta",
+    input:
+        VJ="metadata/igdiscover.csv",
+        D="analysis/igdiscover/kimdb/IGH/D.fasta"
+    run:
+        with open(input.VJ) as f_in, open(output.V, "w") as V_out, open(output.J, "w") as J_out:
+            for row in csv.DictReader(f_in):
+                locus = row["segment"][:3]
+                seg = row["segment"][3]
+                if row["subject"] == wildcards.subject and locus == wildcards.locus:
+                    handle = V_out if seg == "V" else J_out
+                    seqid = row["sequence_id"]
+                    seq = row["sequence"]
+                    handle.write(f">{seqid}\n{seq}\n")
+        shell("cp {input.D} {output.D}")
 
 ### SONAR (Lineage tracing with IgG reads)
 
