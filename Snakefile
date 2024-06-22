@@ -2,6 +2,19 @@
 
 import csv
 
+wildcard_constraints:
+    sample="[-A-Za-z0-9]+",
+    specimen="[A-Za-z0-9]+",
+    subject="[A-Za-z0-9]+",
+    chain="(heavy|light)",
+    celltype="igm|igg",
+    chain_type="(alpha|delta|gamma|mu|epsilon|kappa|lambda)",
+    locus="(IGH|IGK|IGL)",
+    segment="(V|D|J)",
+    antibody_type="(IgA|IgD|IgG|IgM|IgE)",
+    antibody_isolate=r"[-_A-Za-z0-9\.]+",
+    antibody_lineage=r"[-_A-Za-z0-9\.]+",
+
 ### Setup
 
 def load_metadata():
@@ -22,7 +35,7 @@ def make_target_igdiscover():
     for row in METADATA["biosamples"]:
         if row["igseq_Specimen_CellType"] == "IgM+":
             ref = "kimdb" if row["igseq_Chain"] == "heavy" else "sonarramesh"
-            locus = {"mu": "IGH", "kappa": "IGK", "lambda": "IGL"}[row["igseq_Type"]]
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
             subject = row["igseq_Specimen_Subject"]
             attrs.add((ref, locus, subject))
     attrs = list(attrs)
@@ -31,9 +44,28 @@ def make_target_igdiscover():
     return expand(
         "analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json", zip, **attrs)
 
-TARGET_IGDISCOVER = make_target_igdiscover()
+def make_target_sonar_1():
+    attrs = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgG+":
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+            subject = row["igseq_Specimen_Subject"]
+            specimen = row["igseq_Specimen"]
+            attrs.add((subject, locus, specimen))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("subject", "locus", "specimen"), zip(*attrs))}
+    return expand(
+        "analysis/sonar/{subject}.{locus}/{specimen}/"
+        "output/tables/{specimen}_rearrangements.tsv", zip, **attrs)
+
 TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
+TARGET_IGDISCOVER = make_target_igdiscover()
+TARGET_SONAR_1 = make_target_sonar_1()
+
+rule all_sonar_1:
+    input: TARGET_SONAR_1
 
 rule all_igdiscover_run:
     input: TARGET_IGDISCOVER
@@ -108,7 +140,7 @@ rule merge:
             igseq merge -t {threads} --outdir $(dirname {output.fqgz}) {input.r1} {input.r2}
         """
 
-### IgDiscover
+### IgDiscover (individualized germline references with IgM reads)
 
 rule igdiscover_db_sonarramesh:
     """Prep IgDiscover starting database (SONAR/Ramesh for light chain)"""
@@ -188,4 +220,86 @@ rule igdiscover_run:
         """
             conda list --explicit > {log.conda}
             cd $(dirname {output.stats})/.. && igdiscover run --cores {threads}
+        """
+
+rule germline:
+    output:
+        V="analysis/germline/{subject}.{locus}/V.fasta",
+        D="analysis/germline/{subject}.{locus}/D.fasta",
+        J="analysis/germline/{subject}.{locus}/J.fasta",
+    input: unpack(lambda w: {seg: expand("analysis/igdiscover/{ref}/{locus}/{subject}/final/database/{seg}.fasta", ref="kimdb" if w.locus == "IGH" else "sonarramesh", locus=w.locus, subject=w.subject, seg=seg) for seg in ["V", "D", "J"]})
+    shell:
+        """
+            cp {input.V} {output.V}
+            cp {input.D} {output.D}
+            cp {input.J} {output.J}
+        """
+
+### SONAR (Lineage tracing with IgG reads)
+
+def input_for_sonar_input(w):
+    samples = []
+    for row in METADATA["biosamples"]:
+        locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+        if row["igseq_Specimen"] == w.specimen and locus == w.locus:
+            samples.append(row["sample_name"])
+    return expand("analysis/merge/{sample}.fastq.gz", sample=samples)
+
+rule sonar_input:
+    output: "analysis/sonar-input/{specimen}.{locus}.fastq.gz"
+    input: input_for_sonar_input
+    run:
+        if len(input) == 1:
+            Path(output[0]).symlink_to(Path(Path(input[0]).name)/inputs[0].name)
+        elif input:
+            shell("cat {input} > {output}")
+        else:
+            raise ValueError
+
+WD_SONAR = Path("analysis/sonar/{subject}.{locus}/{specimen}")
+
+JMOTIF = {
+    "IGH": "TGGGG",
+    "IGK": "TT[C|T][G|A]G",
+    "IGL": "TT[C|T][G|A]G"}
+
+rule sonar_module_1:
+    output:
+        fasta=WD_SONAR/"output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
+        rearr=WD_SONAR/"output/tables/{specimen}_rearrangements.tsv"
+    input:
+        V="analysis/germline/{subject}.{locus}/V.fasta",
+        D="analysis/germline/{subject}.{locus}/D.fasta",
+        J="analysis/germline/{subject}.{locus}/J.fasta",
+        reads="analysis/sonar-input/{specimen}.{locus}.fastq.gz"
+    log: (WD_SONAR/"log.txt").resolve()
+    singularity: "docker://jesse08/sonar"
+    threads: 4
+    params:
+        wd_sonar=lambda w: expand(str(WD_SONAR), **w),
+        cluster_id_fract=.99,
+        cluster_min2=2,
+        libv_arg=lambda w, input: "--lib " + str(Path(input.V).resolve()),
+        libd_arg=lambda w, input: "D" in input and "--dlib " + str(Path(input.D).resolve()) or "--noD",
+        libj_arg=lambda w, input: "--jlib " + str(Path(input.J).resolve()),
+        jmotif=lambda w: JMOTIF[w.locus]
+    shell:
+        """
+            zcat {input.reads} > {params.wd_sonar}/reads.fastq
+            cd {params.wd_sonar}
+            date | tee -a {log}
+            echo "$(which sonar): $(sonar --version)" | tee -a {log}
+            echo "Running sonar module 1" | tee -a {log}
+            echo "Project directory: $PWD" | tee -a {log}
+            echo "germline V: {input.V}" | tee -a {log}
+            echo "germline D: {input.D}" | tee -a {log}
+            echo "germline J: {input.J}" | tee -a {log}
+            echo "J motif: {params.jmotif}" | tee -a {log}
+            echo "Cluster ID fract: {params.cluster_id_fract}" | tee -a {log}
+            echo "Cluster min2: {params.cluster_min2}" | tee -a {log}
+            echo | tee -a {log}
+            sonar blast_V {params.libv_arg} --derep --threads {threads} 2>&1 | tee -a {log}
+            sonar blast_J {params.libd_arg} {params.libj_arg} --noC --threads {threads} 2>&1 | tee -a {log}
+            sonar finalize --jmotif '{params.jmotif}' --threads {threads} 2>&1 | tee -a {log}
+            sonar cluster_sequences --id {params.cluster_id_fract} --min2 {params.cluster_min2} 2>&1 | tee -a {log}
         """
