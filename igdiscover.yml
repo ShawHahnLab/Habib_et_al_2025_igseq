@@ -1,0 +1,8 @@
+# conda environment YAML for IgDiscover (bioconda+github fork)
+name: igdiscover
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - igdiscover>=0.15,<0.16

@@ -1,0 +1,10 @@
+# conda environment YAML for the whole analysis repo
+name: v2-apex-abs-paper
+channels:
+  - ShawHahnLab
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - snakemake>=7
+  - igseq=0.6.0rc1
