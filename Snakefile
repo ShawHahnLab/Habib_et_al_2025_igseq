@@ -177,7 +177,7 @@ rule igdiscover_input:
     input: input_for_igdiscover_input
     run:
         if len(input) == 1:
-            Path(output[0]).symlink_to(Path(Path(input[0]).name)/inputs[0].name)
+            shell("ln -sr {input} {output}")
         elif input:
             shell("cat {input} > {output}")
         else:
