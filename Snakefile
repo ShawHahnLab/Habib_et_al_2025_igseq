@@ -100,6 +100,11 @@ rule metadata_isolates:
     input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
     shell: "scripts/convert_gb_isolates.py {input} {output}"
 
+rule metadata_igdiscover:
+    output: "metadata/igdiscover.csv"
+    input: "genbank-placeholders/igdiscover.txt.gz"
+    shell: "scripts/convert_gb_igdiscover.py {input} {output}"
+
 ### Basic read processing
 
 rule trim:
