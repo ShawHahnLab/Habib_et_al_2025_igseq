@@ -95,6 +95,11 @@ rule metadata_samples:
                         row_out[key2] = val
                 writer.writerow(row_out)
 
+rule metadata_isolates:
+    output: "metadata/isolates.csv"
+    input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
+    shell: "scripts/convert_gb_isolates.py {input} {output}"
+
 ### Basic read processing
 
 rule trim:
