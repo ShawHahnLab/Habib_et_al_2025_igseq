@@ -295,6 +295,57 @@ rule germline_genbank:
                     handle.write(f">{seqid}\n{seq}\n")
         shell("cp {input.D} {output.D}")
 
+### Isolates
+
+def input_for_igblast_isolates_combined(w):
+    attrs = set()
+    for row in METADATA["isolates"]:
+        attrs.add((row["Subject"], "IGH"))
+        if row["LightSeq"]:
+            attrs.add((row["Subject"], row["LightLocus"]))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("subject", "locus"), zip(*attrs))}
+    return expand("analysis/isolates/{subject}.{locus}/igblast.tsv", zip, **attrs)
+
+rule igblast_isolates_combined:
+    output: "analysis/isolates/igblast.tsv"
+    input: input_for_igblast_isolates_combined
+    run:
+        with open(output[0], "w") as f_out:
+            writer = None
+            for path in input:
+                reader = csv.DictReader(path, delimiter="\t")
+                for row in reader:
+                    if not writer:
+                        writer = csv.DictWriter(
+                            f_out, reader.fieldnames, delimiter="\t", lineterminator="\n")
+                        writer.writeheader()
+                    writer.writerow(row)
+
+rule igblast_isolates:
+    output: "analysis/isolates/{subject}.{locus}/igblast.tsv"
+    input:
+        query="analysis/isolates/{subject}.{locus}/query.fasta",
+        ref=expand("analysis/germline/{{subject}}.{{locus}}/{segment}.fasta", segment=["V", "D", "J"])
+    params:
+        ref=lambda w, input: Path(input.ref[0]).parent
+    conda: "igseq.yml"
+    shell: "igseq igblast -r {params.ref} -Q {input.query} -outfmt 19 -out {output}"
+
+rule igblast_isolates_input:
+    output: temp("analysis/isolates/{subject}.{locus}/query.fasta")
+    input: "metadata/isolates.csv"
+    run:
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            col_seq = "HeavySeq" if wildcards.locus == "IGH" else "LightSeq"
+            for row in csv.DictReader(f_in):
+                if row["Subject"] == wildcards.subject and \
+                        wildcards.locus in (row["LightLocus"], "IGH"):
+                    seqid = row["AntibodyIsolate"]
+                    seq = row[col_seq]
+                    f_out.write(f">{seqid}\n{seq}\n")
+
 ### SONAR (Lineage tracing with IgG reads)
 
 def input_for_sonar_input(w):
