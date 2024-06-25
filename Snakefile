@@ -26,6 +26,10 @@ def load_metadata():
             kwargs["delimiter"] = "\t"
         with open(path) as f_in:
             metadata[key] = list(csv.DictReader(f_in, **kwargs))
+    for path in Path("metadata").glob("*.txt"):
+        key = path.stem
+        with open(path) as f_in:
+            metadata[key] = [line.strip() for line in f_in]
     return metadata
 
 METADATA = load_metadata()
@@ -189,11 +193,17 @@ rule igdiscover_db_kimdb:
 def input_for_igdiscover_input(w):
     chain_type = {"IGH": "mu", "IGK": "kappa", "IGL": "lambda"}[w.locus]
     samples = []
+    # Jumping through some hoops to ensure the ordering of samples matches what
+    # I'd originally used in our analysis so that the input to IgDiscover is
+    # byte-for-byte identical here as it was there.
     for row in METADATA["biosamples"]:
         if row["igseq_Specimen_CellType"] == "IgM+" and \
                 row["igseq_Type"] == chain_type and \
                 row["igseq_Specimen_Subject"] == w.subject:
-            samples.append(row["sample_name"])
+            samples.append((
+                METADATA["igm_runs"].index(row["igseq_Run"]),
+                row["sample_name"]))
+    samples = [s[1] for s in sorted(samples)]
     return expand("analysis/merge/{sample}.fastq.gz", sample=samples)
 
 rule igdiscover_input:
