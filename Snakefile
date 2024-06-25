@@ -261,17 +261,49 @@ rule igdiscover:
             cd $(dirname {output.stats})/.. && igdiscover run --cores {threads}
         """
 
+# TODO get 5695's actual germline ref too.
+# 5695 is a special case since it was previously published so we didn't
+# re-deposit the reference in GenBank with these.  For the purposes of what
+# we're reporting here KIMDB alone is fine since it covers the relevant
+# germline sequences for both lineages, but I should include its full
+# individualized reference too for completeness' sake.
+ruleorder: germline_5695 > germline
+
+def input_for_germline(w):
+    targets = {}
+    for seg in ["V", "D", "J"]:
+        targets[seg] = expand(
+            "analysis/igdiscover/{ref}/{locus}/{subject}/final/database/{seg}.fasta",
+            ref="kimdb" if w.locus == "IGH" else "sonarramesh",
+            locus=w.locus, subject=w.subject, seg=seg)
+    return targets
+
 rule germline:
     output:
         V="analysis/germline/{subject}.{locus}/V.fasta",
         D="analysis/germline/{subject}.{locus}/D.fasta",
         J="analysis/germline/{subject}.{locus}/J.fasta",
-    input: unpack(lambda w: {seg: expand("analysis/igdiscover/{ref}/{locus}/{subject}/final/database/{seg}.fasta", ref="kimdb" if w.locus == "IGH" else "sonarramesh", locus=w.locus, subject=w.subject, seg=seg) for seg in ["V", "D", "J"]})
+    input: unpack(input_for_germline)
     shell:
         """
             cp {input.V} {output.V}
             cp {input.D} {output.D}
             cp {input.J} {output.J}
+        """
+
+rule germline_5695:
+    output:
+        V="analysis/germline/5695.{locus}/V.fasta",
+        D="analysis/germline/5695.{locus}/D.fasta",
+        J="analysis/germline/5695.{locus}/J.fasta"
+    shell:
+        """
+            outdir=$(dirname {output.V})
+            if [[ {wildcards.locus} == "IGH" ]]; then
+                igseq vdj-gather -o $outdir kimdb/{wildcards.locus}
+            else
+                igseq vdj-gather -o $outdir sonaramesh/{wildcards.locus} sonarramesh/IGH/IGHD
+            fi
         """
 
 rule germline_genbank:
