@@ -143,10 +143,36 @@ rule genbank_igdiscover:
             r"locus (?P<locus>IG[HKL]) (?P<segment>[VJ]) segment",
     shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
 
+rule genbank_isolates_5695:
+    output: "analysis/genbank/isolates_5695.csv"
+    input: expand("analysis/genbank/{accession}.fasta", accession=METADATA["genbank_isolates_5695"])
+    # "We used an unbiased FACS strategy to isolate 20,000 individual memory B
+    # cells from peripheral blood mononuclear cells (PBMCs) 65 weeks after SHIV
+    # infection"
+    params:
+        pattern=r".*mulatta isolate (?P<antibody_isolate>[^ ]+) .* (?P<chain>[^ ]+) chain"
+    shell:
+        """
+            ./scripts/tabulate_seqs.py -p '{params.pattern}' \
+                -x subject=5695 -x antibody_lineage=5695-a -x timepoint=65 \
+                {input} -o {output}
+        """
+
+rule genbank_isolates:
+    output: "analysis/genbank/isolates.csv"
+    input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
+    params:
+        pattern=r"Rhesus macaque (?P<subject>.*) antibody lineage (?P<antibody_lineage>.*) "
+            r"antibody (?P<antibody_isolate>.*) isolated at (?P<timepoint>[0-9]+) weeks "
+            r"post-infection, (?P<locus>IG[HKL]) sequence",
+    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
+
 rule metadata_isolates:
     output: "metadata/isolates.csv"
-    input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
-    shell: "scripts/convert_gb_isolates.py {input} {output}"
+    input:
+        isolates="analysis/genbank/isolates.csv",
+        isolates_5695="analysis/genbank/isolates_5695.csv"
+    shell: "scripts/convert_gb_isolates2.py {input} {output}"
 
 rule metadata_igdiscover:
     output: "metadata/igdiscover.csv"
@@ -393,11 +419,11 @@ rule igblast_isolates_input:
     input: "metadata/isolates.csv"
     run:
         with open(input[0]) as f_in, open(output[0], "w") as f_out:
-            col_seq = "HeavySeq" if wildcards.locus == "IGH" else "LightSeq"
+            col_seq = "heavy_sequence" if wildcards.locus == "IGH" else "light_sequence"
             for row in csv.DictReader(f_in):
-                if row["Subject"] == wildcards.subject and \
-                        wildcards.locus in (row["LightLocus"], "IGH"):
-                    seqid = row["AntibodyIsolate"]
+                if row["subject"] == wildcards.subject and \
+                        wildcards.locus in (row["light_locus"], "IGH"):
+                    seqid = row["antibody_isolate"]
                     seq = row[col_seq]
                     f_out.write(f">{seqid}\n{seq}\n")
 

@@ -1,62 +1,37 @@
 #!/usr/bin/env python
 
 """
-Convert GenBank flat file text into CSV of antibody isolate information.
+Gather isolate CSVs into one unified table.
 """
 
 import re
 import sys
 import csv
-import gzip
 from collections import defaultdict
-from Bio import SeqIO
 
-def parse_gb_entry(gbf):
-    for feat in gbf.features:
-        if feat.type == "source":
-            break
-    else:
-        raise ValueError(f"{gbf.name} no source?")
-    match = re.match(
-        r"Rhesus macaque (.*) antibody lineage (.*) antibody (.*) "
-        r"isolated at ([0-9]+) weeks post-infection, (IG[HKL]) sequence",
-        feat.qualifiers["note"][0])
-    tissue = feat.qualifiers["tissue_type"][0]
-    if tissue == "blood (PBMCs)":
-        material = "PBMC"
-    elif tissue == "lymph node tissue":
-        material = "LN"
-    else:
-        raise ValueError(f"{gbf.name} {tissue}?")
-    subject, lineage, isolate, timepoint, locus = match.groups()
-    timepoint = int(timepoint)
-    chain = "heavy" if locus == "IGH" else "light"
-    seq_key = chain.capitalize() + "Seq"
-    attrs_here = {
-        "AntibodyIsolate": isolate,
-        "AntibodyLineage": lineage,
-        "Subject": subject,
-        "Timepoint": timepoint,
-        "Material": material,
-        seq_key: gbf.seq
-        }
-    if chain == "light":
-        attrs_here["LightLocus"] = locus
-    return attrs_here
-
-def convert_gb_isolates(gbs, csv_out):
+def convert_gb_isolates(csvs_in, csv_out):
     isolates = defaultdict(dict)
-    for gb_path in gbs:
-        with gzip.open(gb_path, "rt") as f_in:
-            for gbf in SeqIO.parse(f_in, "gb"):
-                attrs_here = parse_gb_entry(gbf)
-                attrs = isolates[attrs_here["AntibodyIsolate"]]
+    for csv_path in csvs_in:
+        with open(csv_path) as f_in:
+            for row in csv.DictReader(f_in):
+                chain = row.get("chain", "heavy" if row.get("locus") == "IGH" else "light")
+                seq_key = f"{chain}_sequence"
+                attrs_here = {
+                    "antibody_isolate": row["antibody_isolate"],
+                    "antibody_lineage": row["antibody_lineage"],
+                    "subject": row["subject"],
+                    "timepoint": int(row["timepoint"]),
+                    seq_key: row["sequence"]}
+                if chain == "light":
+                    locus = "IGL" if row["subject"] == "5695" else row["locus"]
+                    attrs_here["light_locus"] = locus
+                attrs = isolates[attrs_here["antibody_isolate"]]
                 attrs.update(attrs_here)
     isolates = list(isolates.values())
     isolates.sort(
-        key=lambda row: (row["AntibodyLineage"], row["AntibodyIsolate"], row["Timepoint"]))
-    fields = list(isolates[0].keys())
-    fields.sort(key=lambda txt: "Seq" in txt)
+        key=lambda row: (row["antibody_lineage"], row["antibody_isolate"], row["timepoint"]))
+    fields = ["antibody_isolate", "antibody_lineage", "subject", "timepoint",
+        "light_locus", "heavy_sequence", "light_sequence"]
     with open(csv_out, "w") as f_out:
         writer = csv.DictWriter(f_out, fields, lineterminator="\n")
         writer.writeheader()
