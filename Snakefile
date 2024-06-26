@@ -49,7 +49,7 @@ def make_target_igdiscover():
     return expand(
         "analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json", zip, **attrs)
 
-def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}}.fasta"):
+def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}}.fasta", extra=None):
     attrs = set()
     for row in METADATA["biosamples"]:
         if row["igseq_Specimen_CellType"] == "IgM+":
@@ -57,6 +57,8 @@ def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}
             attrs.add((locus, row["igseq_Specimen_Subject"]))
     attrs = list(attrs)
     attrs.sort()
+    if extra:
+        attrs.extend(extra)
     attrs = {key: val for key, val in zip(("locus", "subject"), zip(*attrs))}
     return expand(expand(pattern, zip, **attrs), segment=["V", "D", "J"])
 
@@ -79,7 +81,9 @@ TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["Sample"] fo
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
 TARGET_IGDISCOVER = make_target_igdiscover()
 TARGET_GERMLINE = make_target_germline()
-TARGET_GERMLINE_GENBANK = make_target_germline("analysis/germline-genbank/{subject}.{locus}/{{segment}}.fasta")
+TARGET_GERMLINE_GENBANK = make_target_germline(
+    "analysis/germline-genbank/{subject}.{locus}/{{segment}}.fasta",
+    (("IGH", "5695"), ("IGL", "5695")))
 TARGET_SONAR_1 = make_target_sonar_1()
 
 rule all_sonar_1:
