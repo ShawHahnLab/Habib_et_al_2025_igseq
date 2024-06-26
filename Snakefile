@@ -548,28 +548,41 @@ rule output_fig1b:
             out.sort(key=lambda row: mabs.index(row["mAb ID"]))
             writer.writerows(out)
 
+# (42056-a's spurious match to DH3-17*01 goes away if we use an earlier lineage
+# member to get a more confident assignment, or even just look at the other
+# mutated members; should just switch to using per-lineage germline assignments
+# even though we're reporting it in terms of individual antibodies.)
 rule output_fig2a:
     output: "output/fig2a.csv"
     input: "analysis/isolates/igblast.tsv"
     run:
         mabs = [
-            "RHA1.V2.01", "6561-a.01", "40591-a.01", "42056-b.01", "41328-a.01", "T646-a.01",
-            "V033-a.01", "44715-a.01", "42056-a.01", "V031-a.01", "6070-a.01", "5695-b.01"]
+            "42056-b.01", "6561-a.01", "40591-a.01", "T646-a.01", "V031-a.01",
+            "6070-a.01", "5695-b.01", "RHA1.V2.01", "44715-a.01", "41328-a.01",
+            "42056-a.01", "V033-a.01"]
         out = []
         with open(input[0]) as f_in, open(output[0], "w") as f_out:
             writer = csv.DictWriter(
                 f_out,
-                ["mAb ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
+                ["Antibody ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
                 lineterminator="\n")
             writer.writeheader()
             for row in csv.DictReader(f_in, delimiter="\t"):
                 if row["sequence_id"] in mabs:
                     locus = row["v_call"][:3]
                     if locus == "IGH":
+                        v_call = row["v_call"].replace("IGHV", "VH")
+                        j_call = row["j_call"].replace("IGHJ", "JH")
+                        # (prefer D3-15 when there are ties since we know
+                        # that's what we found for everything with all our
+                        # in-depth by-lineage digging)
+                        d_call = row["d_call"].split(",")
+                        d_call.sort(key=lambda txt: txt != "IGHD3-15*01")
+                        d_call = d_call[0].replace("IGHD", "DH")
                         out.append({
-                            "mAb ID": row["sequence_id"],
-                            "Macmul VH gene": row["v_call"],
-                            "Macmul DH gene": row["d_call"],
-                            "Macmul JH gene": row["j_call"]})
-            out.sort(key=lambda row: mabs.index(row["mAb ID"]))
+                            "Antibody ID": row["sequence_id"],
+                            "Macmul VH gene": v_call,
+                            "Macmul DH gene": d_call,
+                            "Macmul JH gene": j_call})
+            out.sort(key=lambda row: mabs.index(row["Antibody ID"]))
             writer.writerows(out)
