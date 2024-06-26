@@ -14,6 +14,7 @@ wildcard_constraints:
     antibody_type="(IgA|IgD|IgG|IgM|IgE)",
     antibody_isolate=r"[-_A-Za-z0-9\.]+",
     antibody_lineage=r"[-_A-Za-z0-9\.]+",
+    accession="[^/]+",
 
 ### Setup
 
@@ -118,6 +119,26 @@ rule metadata_samples:
                         row_out[key2] = val
                 writer.writerow(row_out)
 
+rule download_genbank:
+    output: "analysis/genbank/{accession}.{rettype}"
+    shell: "scripts/download_ncbi.py nucleotide {wildcards.accession} {output} {wildcards.rettype}"
+
+rule genbank_igdiscover_5695:
+    output: "analysis/genbank/igdiscover_5695.csv"
+    input: expand("analysis/genbank/{accession}.fasta", accession=METADATA["genbank_igdiscover_5695"])
+    params:
+        pattern=r".*mulatta clone (?P<sequence_id>[^ ]+) immunoglobulin "
+            r".*\((?P<locus>IG[HKL])(?P<segment>[VJ])\) mRNA"
+    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -x subject=5695 {input} -o {output}"
+
+rule genbank_igdiscover:
+    output: "analysis/genbank/igdiscover.csv"
+    input: "genbank-placeholders/igdiscover.txt.gz"
+    params:
+        pattern=r"Rhesus Macaque (?P<subject>.*) antibody germline sequence for "
+            r"locus (?P<locus>IG[HKL]) (?P<segment>[VJ]) segment",
+    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
+
 rule metadata_isolates:
     output: "metadata/isolates.csv"
     input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
@@ -125,8 +146,23 @@ rule metadata_isolates:
 
 rule metadata_igdiscover:
     output: "metadata/igdiscover.csv"
-    input: "genbank-placeholders/igdiscover.txt.gz"
-    shell: "scripts/convert_gb_igdiscover.py {input} {output}"
+    input:
+        igdisc="analysis/genbank/igdiscover.csv",
+        igdisc_5695="analysis/genbank/igdiscover_5695.csv"
+    run:
+        with open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["subject", "locus", "segment", "sequence_id", "sequence"],
+                lineterminator="\n")
+            writer.writeheader()
+            with open(input.igdisc_5695) as f_in:
+                for row in csv.DictReader(f_in):
+                    writer.writerow(row)
+            with open(input.igdisc) as f_in:
+                for row in csv.DictReader(f_in):
+                    row["sequence_id"].removeprefix(row["subject"] + "_")
+                    writer.writerow(row)
 
 ### Basic read processing
 
@@ -318,10 +354,8 @@ rule germline_genbank:
     run:
         with open(input.VJ) as f_in, open(output.V, "w") as V_out, open(output.J, "w") as J_out:
             for row in csv.DictReader(f_in):
-                locus = row["segment"][:3]
-                seg = row["segment"][3]
-                if row["subject"] == wildcards.subject and locus == wildcards.locus:
-                    handle = V_out if seg == "V" else J_out
+                if row["subject"] == wildcards.subject and row["locus"] == wildcards.locus:
+                    handle = V_out if row["segment"] == "V" else J_out
                     seqid = row["sequence_id"]
                     seq = row["sequence"]
                     handle.write(f">{seqid}\n{seq}\n")
