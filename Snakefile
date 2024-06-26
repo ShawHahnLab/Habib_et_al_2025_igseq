@@ -2,6 +2,10 @@
 
 import csv
 
+# "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
+# "germline" to create them from scratch first
+GERMLINE="germline-genbank"
+
 wildcard_constraints:
     sample="[-A-Za-z0-9]+",
     specimen="[A-Za-z0-9]+",
@@ -128,6 +132,11 @@ rule download_genbank:
     shell: "scripts/download_ncbi.py nucleotide {wildcards.accession} {output} {wildcards.rettype}"
 
 rule genbank_igdiscover_5695:
+    """The old IgDiscover sequences for 5695 from the RHA1 paper
+
+    We have a newer reference for 5695 now based on KIMDB for heavy chain, but
+    here's what was used for the original RHA1 paper.
+    """
     output: "analysis/genbank/igdiscover_5695.csv"
     input: expand("analysis/genbank/{accession}.fasta", accession=METADATA["genbank_igdiscover_5695"])
     params:
@@ -136,6 +145,7 @@ rule genbank_igdiscover_5695:
     shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -x subject=5695 {input} -o {output}"
 
 rule genbank_igdiscover:
+    """The new IgDiscover sequences for all subjects"""
     output: "analysis/genbank/igdiscover.csv"
     input: "genbank-placeholders/igdiscover.txt.gz"
     params:
@@ -144,6 +154,7 @@ rule genbank_igdiscover:
     shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
 
 rule genbank_isolates_5695:
+    """Paired heavy and light chain sequences from 5695 from the RHA1 paper"""
     output: "analysis/genbank/isolates_5695.csv"
     input: expand("analysis/genbank/{accession}.fasta", accession=METADATA["genbank_isolates_5695"])
     # "We used an unbiased FACS strategy to isolate 20,000 individual memory B
@@ -159,6 +170,7 @@ rule genbank_isolates_5695:
         """
 
 rule genbank_isolates:
+    """Paired heavy and light chain sequences across lineages"""
     output: "analysis/genbank/isolates.csv"
     input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
     params:
@@ -168,6 +180,7 @@ rule genbank_isolates:
     shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
 
 rule metadata_isolates:
+    """Table of paired sequences for all lineages"""
     output: "metadata/isolates.csv"
     input:
         isolates="analysis/genbank/isolates.csv",
@@ -175,10 +188,9 @@ rule metadata_isolates:
     shell: "scripts/convert_gb_isolates2.py {input} {output}"
 
 rule metadata_igdiscover:
+    """Table of new IgDiscover sequences for all subjects"""
     output: "metadata/igdiscover.csv"
-    input:
-        igdisc="analysis/genbank/igdiscover.csv",
-        igdisc_5695="analysis/genbank/igdiscover_5695.csv"
+    input: "analysis/genbank/igdiscover.csv"
     run:
         with open(output[0], "w") as f_out:
             writer = csv.DictWriter(
@@ -186,12 +198,9 @@ rule metadata_igdiscover:
                 ["subject", "locus", "segment", "sequence_id", "sequence"],
                 lineterminator="\n")
             writer.writeheader()
-            with open(input.igdisc_5695) as f_in:
+            with open(input[0]) as f_in:
                 for row in csv.DictReader(f_in):
-                    writer.writerow(row)
-            with open(input.igdisc) as f_in:
-                for row in csv.DictReader(f_in):
-                    row["sequence_id"].removeprefix(row["subject"] + "_")
+                    row["sequence_id"] = row["sequence_id"].removeprefix(row["subject"] + "_")
                     writer.writerow(row)
 
 ### Basic read processing
@@ -381,9 +390,9 @@ rule germline_genbank:
 def input_for_igblast_isolates_combined(w):
     attrs = set()
     for row in METADATA["isolates"]:
-        attrs.add((row["Subject"], "IGH"))
-        if row["LightSeq"]:
-            attrs.add((row["Subject"], row["LightLocus"]))
+        attrs.add((row["subject"], "IGH"))
+        if row["light_sequence"]:
+            attrs.add((row["subject"], row["light_locus"]))
     attrs = list(attrs)
     attrs.sort()
     attrs = {key: val for key, val in zip(("subject", "locus"), zip(*attrs))}
@@ -396,23 +405,24 @@ rule igblast_isolates_combined:
         with open(output[0], "w") as f_out:
             writer = None
             for path in input:
-                reader = csv.DictReader(path, delimiter="\t")
-                for row in reader:
-                    if not writer:
-                        writer = csv.DictWriter(
-                            f_out, reader.fieldnames, delimiter="\t", lineterminator="\n")
-                        writer.writeheader()
-                    writer.writerow(row)
+                with open(path) as f_in:
+                    reader = csv.DictReader(f_in, delimiter="\t")
+                    for row in reader:
+                        if not writer:
+                            writer = csv.DictWriter(
+                                f_out, reader.fieldnames, delimiter="\t", lineterminator="\n")
+                            writer.writeheader()
+                        writer.writerow(row)
 
 rule igblast_isolates:
     output: "analysis/isolates/{subject}.{locus}/igblast.tsv"
     input:
         query="analysis/isolates/{subject}.{locus}/query.fasta",
-        ref=expand("analysis/germline/{{subject}}.{{locus}}/{segment}.fasta", segment=["V", "D", "J"])
+        ref=expand("analysis/{germline}/{{subject}}.{{locus}}/{segment}.fasta", germline=GERMLINE, segment=["V", "D", "J"])
     params:
         ref=lambda w, input: Path(input.ref[0]).parent
     conda: "igseq.yml"
-    shell: "igseq igblast -r {params.ref} -Q {input.query} -outfmt 19 -out {output}"
+    shell: "igseq igblast -S rhesus -r {params.ref} -Q {input.query} -outfmt 19 -out {output}"
 
 rule igblast_isolates_input:
     output: temp("analysis/isolates/{subject}.{locus}/query.fasta")
@@ -460,9 +470,9 @@ rule sonar_module_1:
         fasta=WD_SONAR/"output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
         rearr=WD_SONAR/"output/tables/{specimen}_rearrangements.tsv"
     input:
-        V="analysis/germline/{subject}.{locus}/V.fasta",
-        D="analysis/germline/{subject}.{locus}/D.fasta",
-        J="analysis/germline/{subject}.{locus}/J.fasta",
+        V=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta",
+        D=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/D.fasta",
+        J=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/J.fasta",
         reads="analysis/sonar-input/{specimen}.{locus}.fastq.gz"
     log: (WD_SONAR/"log.txt").resolve()
     singularity: "docker://jesse08/sonar"
