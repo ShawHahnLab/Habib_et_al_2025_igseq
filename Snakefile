@@ -505,3 +505,71 @@ rule sonar_module_1:
             sonar finalize --jmotif '{params.jmotif}' --threads {threads} 2>&1 | tee -a {log}
             sonar cluster_sequences --id {params.cluster_id_fract} --min2 {params.cluster_min2} 2>&1 | tee -a {log}
         """
+
+### Output
+
+rule output_fig1b:
+    output: "output/fig1b.csv"
+    input: "analysis/isolates/igblast.tsv"
+    run:
+        mabs = [
+            "6070-a.01", "42056-a.01", "5695-b.01", "T646-a.01", "41328-a.01", "V033-a.01",
+            "44715-a.01", "40591-a.01", "6561-a.01", "42056-b.01", "V031-a.01"]
+        out = {}
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            # considered trying to be cute and automatically note the indel
+            # status via the IgBLAST results too, but then remembered IgBLAST
+            # is pretty terrible at figuring that out, especially midway
+            # through a lineage like these are.  So, skipping that column.
+            writer = csv.DictWriter(
+                f_out,
+                ["mAb ID", "Macmul VH gene", "Macmul VL gene", "SHM IGHV", "SHM IGLV",
+                    "HCDR3 length (aa)", "VDJ Junction"],
+                lineterminator="\n")
+            writer.writeheader()
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                if row["sequence_id"] in mabs:
+                    locus = row["v_call"][:3]
+                    if row["sequence_id"] not in out:
+                        out[row["sequence_id"]] = {}
+                    row_out = out[row["sequence_id"]]
+                    row_out["mAb ID"] = row["sequence_id"]
+                    if locus == "IGH":
+                        key_gene = "Macmul VH gene"
+                        key_shm = "SHM IGHV"
+                        row_out["HCDR3 length (aa)"] = len(row["junction_aa"]) - 2
+                        row_out["VDJ Junction"] = row["junction_aa"]
+                    else:
+                        key_gene = "Macmul VL gene"
+                        key_shm = "SHM IGLV"
+                    row_out[key_gene] = row["v_call"]
+                    row_out[key_shm] = round(100-float(row["v_identity"]), 1)
+            out = list(out.values())
+            out.sort(key=lambda row: mabs.index(row["mAb ID"]))
+            writer.writerows(out)
+
+rule output_fig2a:
+    output: "output/fig2a.csv"
+    input: "analysis/isolates/igblast.tsv"
+    run:
+        mabs = [
+            "RHA1.V2.01", "6561-a.01", "40591-a.01", "42056-b.01", "41328-a.01", "T646-a.01",
+            "V033-a.01", "44715-a.01", "42056-a.01", "V031-a.01", "6070-a.01", "5695-b.01"]
+        out = []
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["mAb ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
+                lineterminator="\n")
+            writer.writeheader()
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                if row["sequence_id"] in mabs:
+                    locus = row["v_call"][:3]
+                    if locus == "IGH":
+                        out.append({
+                            "mAb ID": row["sequence_id"],
+                            "Macmul VH gene": row["v_call"],
+                            "Macmul DH gene": row["d_call"],
+                            "Macmul JH gene": row["j_call"]})
+            out.sort(key=lambda row: mabs.index(row["mAb ID"]))
+            writer.writerows(out)
