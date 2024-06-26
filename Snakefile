@@ -297,14 +297,6 @@ rule igdiscover:
             cd $(dirname {output.stats})/.. && igdiscover run --cores {threads}
         """
 
-# TODO get 5695's actual germline ref too.
-# 5695 is a special case since it was previously published so we didn't
-# re-deposit the reference in GenBank with these.  For the purposes of what
-# we're reporting here KIMDB alone is fine since it covers the relevant
-# germline sequences for both lineages, but I should include its full
-# individualized reference too for completeness' sake.
-ruleorder: germline_5695 > germline
-
 def input_for_germline(w):
     targets = {}
     for seg in ["V", "D", "J"]:
@@ -327,21 +319,6 @@ rule germline:
             cp {input.J} {output.J}
         """
 
-rule germline_5695:
-    output:
-        V="analysis/germline/5695.{locus}/V.fasta",
-        D="analysis/germline/5695.{locus}/D.fasta",
-        J="analysis/germline/5695.{locus}/J.fasta"
-    shell:
-        """
-            outdir=$(dirname {output.V})
-            if [[ {wildcards.locus} == "IGH" ]]; then
-                igseq vdj-gather -o $outdir kimdb/{wildcards.locus}
-            else
-                igseq vdj-gather -o $outdir sonaramesh/{wildcards.locus} sonarramesh/IGH/IGHD
-            fi
-        """
-
 rule germline_genbank:
     """Prep germline files with the existing V and J from our GenBank entries"""
     output:
@@ -350,7 +327,9 @@ rule germline_genbank:
         J="analysis/germline-genbank/{subject}.{locus}/J.fasta",
     input:
         VJ="metadata/igdiscover.csv",
-        D="analysis/igdiscover/kimdb/IGH/D.fasta"
+        D="analysis/igdiscover/kimdb/IGH/D.fasta",
+        HJ="analysis/igdiscover/kimdb/IGH/J.fasta",
+        LJ="analysis/igdiscover/sonarramesh/IGL/J.fasta"
     run:
         with open(input.VJ) as f_in, open(output.V, "w") as V_out, open(output.J, "w") as J_out:
             for row in csv.DictReader(f_in):
@@ -360,6 +339,12 @@ rule germline_genbank:
                     seq = row["sequence"]
                     handle.write(f">{seqid}\n{seq}\n")
         shell("cp {input.D} {output.D}")
+        # For 5695, use J from existing DB to get a complete reference.
+        # (5695 is a special case since it was previously published so we
+        # didn't re-deposit the reference in GenBank with these.)
+        if wildcards.subject == "5695":
+            ref = input.HJ if wildcards.locus == "IGH" else input.LJ
+            shell("cp {ref} {output.J}")
 
 ### Isolates
 
