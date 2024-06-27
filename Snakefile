@@ -569,7 +569,15 @@ rule sonar_module_1:
 # Some final summary outputs approximating what's shown in the paper itself.
 
 def final_gene_name(txt):
+    """Format the gene names like the paper has them"""
     return re.sub(r"IG([HKL])([VDJ])", r"\2\1", txt)
+
+def indexish(items, item, default=-1):
+    """Index of item in items or -1 if not present (just to help override sorting)"""
+    try:
+        return items.index(item)
+    except ValueError:
+        return default
 
 rule output_fig1b:
     output: "output/fig1b.csv"
@@ -597,8 +605,6 @@ rule output_fig1b:
             writer.writeheader()
             for row in csv.DictReader(f_in, delimiter="\t"):
                 if row["sequence_id"] in mabs:
-                    #if row["sequence_id"] not in out:
-                    #    out[row["sequence_id"]] = {}
                     row_out = out[row["sequence_id"]]
                     row_out["mAb ID"] = row["sequence_id"]
                     if row["v_call"].startswith("IGH"):
@@ -649,40 +655,56 @@ rule output_fig2a:
             out.sort(key=lambda row: mabs.index(row["Antibody ID"]))
             writer.writerows(out)
 
-#rule output_tableS2:
-#    output: "output/tableS2.csv"
-#    input: "analysis/isolates/igblast.tsv"
-#    run:
-#        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
-#        lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
-#            "41328-a", "V033-a", "44715-a", "40591-a", "6561-a", "V031-a"]
-#        #subjects= ["6070", "42056", "5695", "T646", "41328", "V033", "44715", "40591", "6561", "V031"]
-#        out = []
-#        with open(input[0]) as f_in, open(output[0], "w") as f_out:
-#            writer = csv.DictWriter(
-#                f_out,
-#                ["Animal ID", "Timepoint", "mAb ID", "Heavy Ig genes", "Light Ig genes"],
-#                lineterminator="\n")
-#            writer.writeheader()
-#            for row in csv.DictReader(f_in, delimiter="\t"):
-#                if isolate_map[row["sequence_id"]]["antibody_lineage"] in lineages:
-#                    ...
-#                    locus = row["v_call"][:3]
-#                    if locus == "IGH":
-#                        # TODO use final_gene_name()
-#                        v_call = row["v_call"].replace("IGHV", "VH")
-#                        j_call = row["j_call"].replace("IGHJ", "JH")
-#                        # (prefer D3-15 when there are ties since we know
-#                        # that's what we found for everything with all our
-#                        # in-depth by-lineage digging)
-#                        d_call = row["d_call"].split(",")
-#                        d_call.sort(key=lambda txt: txt != "IGHD3-15*01")
-#                        d_call = d_call[0].replace("IGHD", "DH")
-#                        out.append({
-#                            "Antibody ID": row["sequence_id"],
-#                            "Macmul VH gene": v_call,
-#                            "Macmul DH gene": d_call,
-#                            "Macmul JH gene": j_call})
+rule output_tableS2:
+    output: "output/tableS2.csv"
+    input:
+        igblast="analysis/isolates/igblast.tsv",
+        by_lineage="analysis/isolates/summary_by_lineage.csv"
+    run:
+        lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
+            "41328-a", "V033-a", "44715-a", "40591-a", "6561-a", "V031-a"]
+        isolates = ["5695-b.04", "5695-b.05", "5695-b.02", "5695-b.03", "5695-b.01"]
+        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+        with open(input.by_lineage) as f_in:
+            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
+        out = defaultdict(dict)
+        with open(input.igblast) as f_in:
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                isolate_attrs = isolate_map[row["sequence_id"]]
+                lineage = isolate_attrs["antibody_lineage"]
+                if row["v_call"].startswith("IGH"):
+                    key_genes_out = "Heavy Ig genes"
+                    keys_gene_in = ("vh", "dh", "jh")
+                else:
+                    key_genes_out = "Light Ig genes"
+                    keys_gene_in = ("vl", "jl")
+                calls = " ".join(final_gene_name(lineage_calls[lineage][x]) for x in keys_gene_in)
+                if lineage in lineages:
+                    subject = "RM" + isolate_attrs["subject"]
+                    row_out = out[row["sequence_id"]]
+                    row_out["Animal ID"] = subject
+                    row_out["Timepoint"] = "wk" + str(isolate_attrs["timepoint"])
+                    row_out["mAb ID"] = row["sequence_id"]
+                    row_out[key_genes_out] = calls
+                    row_out["_lineage"] = lineage
+        out = list(out.values())
+        def sorter(row):
+            return (
+                indexish(lineages, row["_lineage"]),
+                indexish(isolates, row["mAb ID"]),
+                row["mAb ID"])
+        out.sort(key = sorter)
+        for row in out:
+            dels = [key for key in row if key.startswith("_")]
+            for key in dels:
+                del row[key]
+        with open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["Animal ID", "Timepoint", "mAb ID", "Heavy Ig genes", "Light Ig genes"],
+                lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(out)
 
 ### Info from paper itself
 
