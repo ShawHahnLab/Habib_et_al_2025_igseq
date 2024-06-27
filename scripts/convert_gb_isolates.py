@@ -4,7 +4,6 @@
 Gather isolate CSVs into one unified table.
 """
 
-import re
 import sys
 import csv
 from collections import defaultdict
@@ -14,10 +13,11 @@ def convert_gb_isolates(csvs_in, csv_out):
     for csv_path in csvs_in:
         with open(csv_path) as f_in:
             for row in csv.DictReader(f_in):
+                isolate = row["antibody_isolate"].replace("RHA1.V2", "RHA1")
                 chain = row.get("chain", "heavy" if row.get("locus") == "IGH" else "light")
                 seq_key = f"{chain}_sequence"
                 attrs_here = {
-                    "antibody_isolate": row["antibody_isolate"],
+                    "antibody_isolate": isolate,
                     "antibody_lineage": row["antibody_lineage"],
                     "subject": row["subject"],
                     "timepoint": int(row["timepoint"]),

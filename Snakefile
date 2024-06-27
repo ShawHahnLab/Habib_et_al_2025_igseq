@@ -1,6 +1,7 @@
 # See https://github.com/shawhahnlab/igseqhelper
 
 import csv
+from collections import defaultdict
 
 # "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
 # "germline" to create them from scratch first
@@ -185,7 +186,7 @@ rule metadata_isolates:
     input:
         isolates="analysis/genbank/isolates.csv",
         isolates_5695="analysis/genbank/isolates_5695.csv"
-    shell: "scripts/convert_gb_isolates2.py {input} {output}"
+    shell: "scripts/convert_gb_isolates.py {input} {output}"
 
 rule metadata_igdiscover:
     """Table of new IgDiscover sequences for all subjects"""
@@ -437,6 +438,63 @@ rule igblast_isolates_input:
                     seq = row[col_seq]
                     f_out.write(f">{seqid}\n{seq}\n")
 
+rule igblast_isolates_lineage_summary:
+    """Make a rough summary table of top gene calls by lineage according to IgBLAST"""
+    output: "analysis/isolates/summary_by_lineage.csv"
+    input: "analysis/isolates/igblast.tsv"
+    run:
+        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+        # gather up a tally by lineage by locus+segment of all observed IgBLAST
+        # gene calls, counting entries from ties separately
+        # (lineage -> locus+segment -> tally of gene calls across antibodies)
+        calls = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        with open(input[0]) as f_in:
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                lineage = isolate_map[row["sequence_id"]]["antibody_lineage"]
+                for seg in ["v", "d", "j"]:
+                    calls_here = row[f"{seg}_call"]
+                    if calls_here and not "," in calls_here:
+                        locseg = calls_here[:4]
+                        for call in calls_here.split(","):
+                            calls[lineage][locseg][call] += 1
+        out = []
+        colmap = {
+            "IGHV": "vh", "IGHD": "dh", "IGHJ": "jh",
+            "IGKV": "vl", "IGKJ": "jl",
+            "IGLV": "vl", "IGLJ": "jl"}
+        for lineage, locseg_calls in calls.items():
+            tops = {}
+            for locseg, calls_here in locseg_calls.items():
+                # We went over all this lineage by lineage with a fine-toothed
+                # comb manually so it's all a bit rough to just take IgBLAST's
+                # output as-is here; with that in mind, just shunt D calls to
+                # D3-15 as we know they should be, assuming that call at least
+                # shows up in the list (which it better)
+                if "IGHD3-15*01" in calls_here:
+                    calls_here = "IGHD3-15*01"
+                elif locseg == "IGHD":
+                    raise ValueError("No D3-15?!")
+                else:
+                    calls_here = [(num, name) for name, num in calls_here.items()]
+                    calls_here = sorted(calls_here)[0][1]
+                tops[locseg] = calls_here
+            row_out = {"antibody_lineage": lineage}
+            for locseg, call in tops.items():
+                colname = colmap[locseg]
+                if colname in row_out:
+                    # basically just to make sure no IGK/IGL collisions for any
+                    # one lineage which would make no sense
+                    raise ValueError(f"{row_out} but we also have {locseg}?")
+                row_out[colname] = tops[locseg]
+            out.append(row_out)
+        with open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["antibody_lineage", "vh", "dh", "jh", "vl", "jl"],
+                lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(out)
+
 ### SONAR (Lineage tracing with IgG reads)
 
 def input_for_sonar_input(w):
@@ -507,16 +565,26 @@ rule sonar_module_1:
         """
 
 ### Output
+#
+# Some final summary outputs approximating what's shown in the paper itself.
+
+def final_gene_name(txt):
+    return re.sub(r"IG([HKL])([VDJ])", r"\2\1", txt)
 
 rule output_fig1b:
     output: "output/fig1b.csv"
-    input: "analysis/isolates/igblast.tsv"
+    input:
+        igblast="analysis/isolates/igblast.tsv",
+        by_lineage="analysis/isolates/summary_by_lineage.csv"
     run:
         mabs = [
             "6070-a.01", "42056-a.01", "5695-b.01", "T646-a.01", "41328-a.01", "V033-a.01",
             "44715-a.01", "40591-a.01", "6561-a.01", "42056-b.01", "V031-a.01"]
-        out = {}
-        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+        out = defaultdict(dict)
+        with open(input.by_lineage) as f_in:
+            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
+        with open(input.igblast) as f_in, open(output[0], "w") as f_out:
             # considered trying to be cute and automatically note the indel
             # status via the IgBLAST results too, but then remembered IgBLAST
             # is pretty terrible at figuring that out, especially midway
@@ -529,60 +597,100 @@ rule output_fig1b:
             writer.writeheader()
             for row in csv.DictReader(f_in, delimiter="\t"):
                 if row["sequence_id"] in mabs:
-                    locus = row["v_call"][:3]
-                    if row["sequence_id"] not in out:
-                        out[row["sequence_id"]] = {}
+                    #if row["sequence_id"] not in out:
+                    #    out[row["sequence_id"]] = {}
                     row_out = out[row["sequence_id"]]
                     row_out["mAb ID"] = row["sequence_id"]
-                    if locus == "IGH":
-                        key_gene = "Macmul VH gene"
+                    if row["v_call"].startswith("IGH"):
+                        key_gene_out = "Macmul VH gene"
+                        key_gene_in = "vh"
                         key_shm = "SHM IGHV"
                         row_out["HCDR3 length (aa)"] = len(row["junction_aa"]) - 2
                         row_out["VDJ Junction"] = row["junction_aa"]
                     else:
-                        key_gene = "Macmul VL gene"
+                        key_gene_out = "Macmul VL gene"
+                        key_gene_in = "vl"
                         key_shm = "SHM IGLV"
-                    row_out[key_gene] = row["v_call"]
+                    lineage = isolate_map[row["sequence_id"]]["antibody_lineage"]
+                    row_out[key_gene_out] = final_gene_name(lineage_calls[lineage][key_gene_in])
                     row_out[key_shm] = round(100-float(row["v_identity"]), 1)
             out = list(out.values())
             out.sort(key=lambda row: mabs.index(row["mAb ID"]))
             writer.writerows(out)
 
-# (42056-a's spurious match to DH3-17*01 goes away if we use an earlier lineage
-# member to get a more confident assignment, or even just look at the other
-# mutated members; should just switch to using per-lineage germline assignments
-# even though we're reporting it in terms of individual antibodies.)
 rule output_fig2a:
     output: "output/fig2a.csv"
-    input: "analysis/isolates/igblast.tsv"
+    input:
+        igblast="analysis/isolates/igblast.tsv",
+        by_lineage="analysis/isolates/summary_by_lineage.csv"
     run:
         mabs = [
             "42056-b.01", "6561-a.01", "40591-a.01", "T646-a.01", "V031-a.01",
-            "6070-a.01", "5695-b.01", "RHA1.V2.01", "44715-a.01", "41328-a.01",
+            "6070-a.01", "5695-b.01", "RHA1.01", "44715-a.01", "41328-a.01",
             "42056-a.01", "V033-a.01"]
         out = []
-        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+        with open(input.by_lineage) as f_in:
+            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
+        with open(input.igblast) as f_in, open(output[0], "w") as f_out:
             writer = csv.DictWriter(
-                f_out,
-                ["Antibody ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
+                f_out, ["Antibody ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
                 lineterminator="\n")
             writer.writeheader()
             for row in csv.DictReader(f_in, delimiter="\t"):
                 if row["sequence_id"] in mabs:
-                    locus = row["v_call"][:3]
-                    if locus == "IGH":
-                        v_call = row["v_call"].replace("IGHV", "VH")
-                        j_call = row["j_call"].replace("IGHJ", "JH")
-                        # (prefer D3-15 when there are ties since we know
-                        # that's what we found for everything with all our
-                        # in-depth by-lineage digging)
-                        d_call = row["d_call"].split(",")
-                        d_call.sort(key=lambda txt: txt != "IGHD3-15*01")
-                        d_call = d_call[0].replace("IGHD", "DH")
+                    if row["v_call"].startswith("IGH"):
+                        lineage = isolate_map[row["sequence_id"]]["antibody_lineage"]
                         out.append({
                             "Antibody ID": row["sequence_id"],
-                            "Macmul VH gene": v_call,
-                            "Macmul DH gene": d_call,
-                            "Macmul JH gene": j_call})
+                            "Macmul VH gene": final_gene_name(lineage_calls[lineage]["vh"]),
+                            "Macmul DH gene": final_gene_name(lineage_calls[lineage]["dh"]),
+                            "Macmul JH gene": final_gene_name(lineage_calls[lineage]["jh"])})
             out.sort(key=lambda row: mabs.index(row["Antibody ID"]))
             writer.writerows(out)
+
+#rule output_tableS2:
+#    output: "output/tableS2.csv"
+#    input: "analysis/isolates/igblast.tsv"
+#    run:
+#        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+#        lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
+#            "41328-a", "V033-a", "44715-a", "40591-a", "6561-a", "V031-a"]
+#        #subjects= ["6070", "42056", "5695", "T646", "41328", "V033", "44715", "40591", "6561", "V031"]
+#        out = []
+#        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+#            writer = csv.DictWriter(
+#                f_out,
+#                ["Animal ID", "Timepoint", "mAb ID", "Heavy Ig genes", "Light Ig genes"],
+#                lineterminator="\n")
+#            writer.writeheader()
+#            for row in csv.DictReader(f_in, delimiter="\t"):
+#                if isolate_map[row["sequence_id"]]["antibody_lineage"] in lineages:
+#                    ...
+#                    locus = row["v_call"][:3]
+#                    if locus == "IGH":
+#                        # TODO use final_gene_name()
+#                        v_call = row["v_call"].replace("IGHV", "VH")
+#                        j_call = row["j_call"].replace("IGHJ", "JH")
+#                        # (prefer D3-15 when there are ties since we know
+#                        # that's what we found for everything with all our
+#                        # in-depth by-lineage digging)
+#                        d_call = row["d_call"].split(",")
+#                        d_call.sort(key=lambda txt: txt != "IGHD3-15*01")
+#                        d_call = d_call[0].replace("IGHD", "DH")
+#                        out.append({
+#                            "Antibody ID": row["sequence_id"],
+#                            "Macmul VH gene": v_call,
+#                            "Macmul DH gene": d_call,
+#                            "Macmul JH gene": j_call})
+
+### Info from paper itself
+
+rule all_from_paper:
+    input: expand("from-paper/{name}.csv", name=["fig1b", "fig2a", "tableS2"])
+
+rule from_paper:
+    """Download CSV version of item from the paper from a copy in Google Sheets"""
+    output: "from-paper/{name}.csv"
+    input: "metadata/paper_google_sheets.yml"
+    shell: "scripts/download_google_sheet.py {wildcards.name} {input} {output}"
