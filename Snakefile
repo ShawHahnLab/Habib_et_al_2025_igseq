@@ -400,6 +400,7 @@ def input_for_igblast_isolates_combined(w):
     return expand("analysis/isolates/{subject}.{locus}/igblast.tsv", zip, **attrs)
 
 rule igblast_isolates_combined:
+    """Combined TSV of IgBLAST AIRR across heavy+light seqs of all isolates"""
     output: "analysis/isolates/igblast.tsv"
     input: input_for_igblast_isolates_combined
     run:
@@ -416,6 +417,7 @@ rule igblast_isolates_combined:
                         writer.writerow(row)
 
 rule igblast_isolates:
+    """IgBLAST AIRR for individual heavy+light sequences for each isolate"""
     output: "analysis/isolates/{subject}.{locus}/igblast.tsv"
     input:
         query="analysis/isolates/{subject}.{locus}/query.fasta",
@@ -439,7 +441,7 @@ rule igblast_isolates_input:
                     f_out.write(f">{seqid}\n{seq}\n")
 
 rule igblast_isolates_lineage_summary:
-    """Make a rough summary table of top gene calls by lineage according to IgBLAST"""
+    """Rough summary table of top gene calls by lineage according to IgBLAST"""
     output: "analysis/isolates/summary_by_lineage.csv"
     input: "analysis/isolates/igblast.tsv"
     run:
@@ -491,6 +493,46 @@ rule igblast_isolates_lineage_summary:
             writer = csv.DictWriter(
                 f_out,
                 ["antibody_lineage", "vh", "dh", "jh", "vl", "jl"],
+                lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(out)
+
+rule igblast_isolates_summary:
+    """Per-isolate heavy+light summary table including some lineage+subject info"""
+    output: "analysis/isolates/summary.csv"
+    input:
+        by_lineage="analysis/isolates/summary_by_lineage.csv",
+        igblast="analysis/isolates/igblast.tsv"
+    run:
+        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
+        with open(input.by_lineage) as f_in:
+            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
+        out = defaultdict(dict)
+        with open(input.igblast) as f_in:
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                isolate_attrs = isolate_map[row["sequence_id"]]
+                lineage = isolate_attrs["antibody_lineage"]
+                subject = isolate_attrs["subject"]
+                row_out = out[row["sequence_id"]]
+                row_out["sequence_id"] = row["sequence_id"]
+                row_out["antibody_lineage"] = lineage
+                row_out["subject"] = subject
+                row_out["timepoint"] = isolate_attrs["timepoint"]
+                suffix = "h" if row["v_call"].startswith("IGH") else "l"
+                for seg in ["v", "d", "j"]:
+                    key = seg + suffix
+                    if key in lineage_calls[lineage]:
+                        row_out[key] = lineage_calls[lineage][key]
+                row_out[f"shm_v{suffix}"] = round(100-float(row["v_identity"]), 1)
+                if suffix == "h":
+                    row_out["heavy_junction_aa"] = row["junction_aa"]
+                    row_out["cdrh3_len"] = len(row["cdr3_aa"])
+        out = list(out.values())
+        with open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["sequence_id", "antibody_lineage", "subject", "timepoint", "heavy_junction_aa",
+                    "cdrh3_len", "vh", "dh", "jh", "vl", "jl", "shm_vh", "shm_vl"],
                 lineterminator="\n")
             writer.writeheader()
             writer.writerows(out)
@@ -581,116 +623,78 @@ def indexish(items, item, default=-1):
 
 rule output_fig1b:
     output: "output/fig1b.csv"
-    input:
-        igblast="analysis/isolates/igblast.tsv",
-        by_lineage="analysis/isolates/summary_by_lineage.csv"
+    input: "analysis/isolates/summary.csv"
     run:
         mabs = [
             "6070-a.01", "42056-a.01", "5695-b.01", "T646-a.01", "41328-a.01", "V033-a.01",
             "44715-a.01", "40591-a.01", "6561-a.01", "42056-b.01", "V031-a.01"]
-        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
-        out = defaultdict(dict)
-        with open(input.by_lineage) as f_in:
-            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
-        with open(input.igblast) as f_in, open(output[0], "w") as f_out:
+        out = []
+        with open(input[0]) as f_in:
             # considered trying to be cute and automatically note the indel
             # status via the IgBLAST results too, but then remembered IgBLAST
             # is pretty terrible at figuring that out, especially midway
             # through a lineage like these are.  So, skipping that column.
-            writer = csv.DictWriter(
-                f_out,
-                ["mAb ID", "Macmul VH gene", "Macmul VL gene", "SHM IGHV", "SHM IGLV",
-                    "HCDR3 length (aa)", "VDJ Junction"],
-                lineterminator="\n")
-            writer.writeheader()
-            for row in csv.DictReader(f_in, delimiter="\t"):
+            for row in csv.DictReader(f_in):
                 if row["sequence_id"] in mabs:
-                    row_out = out[row["sequence_id"]]
-                    row_out["mAb ID"] = row["sequence_id"]
-                    if row["v_call"].startswith("IGH"):
-                        key_gene_out = "Macmul VH gene"
-                        key_gene_in = "vh"
-                        key_shm = "SHM IGHV"
-                        row_out["HCDR3 length (aa)"] = len(row["junction_aa"]) - 2
-                        row_out["VDJ Junction"] = row["junction_aa"]
-                    else:
-                        key_gene_out = "Macmul VL gene"
-                        key_gene_in = "vl"
-                        key_shm = "SHM IGLV"
-                    lineage = isolate_map[row["sequence_id"]]["antibody_lineage"]
-                    row_out[key_gene_out] = final_gene_name(lineage_calls[lineage][key_gene_in])
-                    row_out[key_shm] = round(100-float(row["v_identity"]), 1)
-            out = list(out.values())
-            out.sort(key=lambda row: mabs.index(row["mAb ID"]))
+                    out.append({
+                        "mAb ID": row["sequence_id"],
+                        "Macmul VH gene": final_gene_name(row["vh"]),
+                        "Macmul VL gene": final_gene_name(row["vl"]),
+                        "SHM IGHV": final_gene_name(row["shm_vh"]),
+                        "SHM IGLV": final_gene_name(row["shm_vl"]),
+                        "HCDR3 length (aa)": row["cdrh3_len"],
+                        "VDJ Junction": row["heavy_junction_aa"]})
+        out.sort(key=lambda row: mabs.index(row["mAb ID"]))
+        with open(output[0], "w") as f_out:
+            writer = csv.DictWriter(f_out, out[0].keys(), lineterminator="\n")
+            writer.writeheader()
             writer.writerows(out)
 
 rule output_fig2a:
     output: "output/fig2a.csv"
-    input:
-        igblast="analysis/isolates/igblast.tsv",
-        by_lineage="analysis/isolates/summary_by_lineage.csv"
+    input: "analysis/isolates/summary.csv",
     run:
         mabs = [
             "42056-b.01", "6561-a.01", "40591-a.01", "T646-a.01", "V031-a.01",
             "6070-a.01", "5695-b.01", "RHA1.01", "44715-a.01", "41328-a.01",
             "42056-a.01", "V033-a.01"]
         out = []
-        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
-        with open(input.by_lineage) as f_in:
-            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
-        with open(input.igblast) as f_in, open(output[0], "w") as f_out:
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
             writer = csv.DictWriter(
                 f_out, ["Antibody ID", "Macmul VH gene", "Macmul DH gene", "Macmul JH gene"],
                 lineterminator="\n")
             writer.writeheader()
-            for row in csv.DictReader(f_in, delimiter="\t"):
+            for row in csv.DictReader(f_in):
                 if row["sequence_id"] in mabs:
-                    if row["v_call"].startswith("IGH"):
-                        lineage = isolate_map[row["sequence_id"]]["antibody_lineage"]
-                        out.append({
-                            "Antibody ID": row["sequence_id"],
-                            "Macmul VH gene": final_gene_name(lineage_calls[lineage]["vh"]),
-                            "Macmul DH gene": final_gene_name(lineage_calls[lineage]["dh"]),
-                            "Macmul JH gene": final_gene_name(lineage_calls[lineage]["jh"])})
+                    out.append({
+                        "Antibody ID": row["sequence_id"],
+                        "Macmul VH gene": final_gene_name(row["vh"]),
+                        "Macmul DH gene": final_gene_name(row["dh"]),
+                        "Macmul JH gene": final_gene_name(row["jh"])})
             out.sort(key=lambda row: mabs.index(row["Antibody ID"]))
             writer.writerows(out)
 
 rule output_tableS2:
     output: "output/tableS2.csv"
-    input:
-        igblast="analysis/isolates/igblast.tsv",
-        by_lineage="analysis/isolates/summary_by_lineage.csv"
+    input: "analysis/isolates/summary.csv"
     run:
         lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
             "41328-a", "V033-a", "44715-a", "40591-a", "6561-a", "V031-a"]
         isolates = ["5695-b.04", "5695-b.05", "5695-b.02", "5695-b.03", "5695-b.01"]
-        isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
-        with open(input.by_lineage) as f_in:
-            lineage_calls = {row["antibody_lineage"]: row for row in csv.DictReader(f_in)}
-        out = defaultdict(dict)
-        with open(input.igblast) as f_in:
-            for row in csv.DictReader(f_in, delimiter="\t"):
-                isolate_attrs = isolate_map[row["sequence_id"]]
-                lineage = isolate_attrs["antibody_lineage"]
-                if row["v_call"].startswith("IGH"):
-                    key_genes_out = "Heavy Ig genes"
-                    keys_gene_in = ("vh", "dh", "jh")
-                    key_v_div = "VH %nt mut"
-                else:
-                    key_genes_out = "Light Ig genes"
-                    keys_gene_in = ("vl", "jl")
-                    key_v_div = "VL %nt mut"
-                calls = " ".join(final_gene_name(lineage_calls[lineage][x]) for x in keys_gene_in)
-                if lineage in lineages:
-                    subject = "RM" + isolate_attrs["subject"]
-                    row_out = out[row["sequence_id"]]
-                    row_out["Animal ID"] = subject
-                    row_out["Timepoint"] = "wk" + str(isolate_attrs["timepoint"])
-                    row_out["mAb ID"] = row["sequence_id"]
-                    row_out[key_genes_out] = calls
-                    row_out[key_v_div] = round(100-float(row["v_identity"]), 1)
-                    row_out["_lineage"] = lineage
-        out = list(out.values())
+        out = []
+        with open(input[0]) as f_in:
+            for row in csv.DictReader(f_in):
+                splat = lambda keys: " ".join(final_gene_name(row[k]) for k in keys if row[k])
+                if row["antibody_lineage"] in lineages:
+                    out.append({
+                        "Animal ID": "RM" + row["subject"],
+                        "Timepoint": "wk" + row["timepoint"],
+                        "mAb ID": row["sequence_id"],
+                        "Heavy Ig genes": splat(("vh", "dh", "jh")),
+                        "Light Ig genes": splat(("vl", "jl")),
+                        "VH %nt mut": row["shm_vh"],
+                        "VL %nt mut": row["shm_vl"],
+                        "_lineage": row["antibody_lineage"]})
         def sorter(row):
             return (
                 indexish(lineages, row["_lineage"]),
@@ -698,9 +702,7 @@ rule output_tableS2:
                 row["mAb ID"])
         out.sort(key = sorter)
         for row in out:
-            dels = [key for key in row if key.startswith("_")]
-            for key in dels:
-                del row[key]
+            del row["_lineage"]
         with open(output[0], "w") as f_out:
             writer = csv.DictWriter(
                 f_out,
