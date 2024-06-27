@@ -20,6 +20,7 @@ wildcard_constraints:
     antibody_isolate=r"[-_A-Za-z0-9\.]+",
     antibody_lineage=r"[-_A-Za-z0-9\.]+",
     accession="[^/]+",
+    name="[^/]+",
 
 ### Setup
 
@@ -67,7 +68,7 @@ def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}
     attrs = {key: val for key, val in zip(("locus", "subject"), zip(*attrs))}
     return expand(expand(pattern, zip, **attrs), segment=["V", "D", "J"])
 
-def make_target_sonar_1():
+def make_target_sonar(pattern="analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_rearrangements.tsv"):
     attrs = set()
     for row in METADATA["biosamples"]:
         if row["igseq_Specimen_CellType"] == "IgG+":
@@ -78,9 +79,7 @@ def make_target_sonar_1():
     attrs = list(attrs)
     attrs.sort()
     attrs = {key: val for key, val in zip(("subject", "locus", "specimen"), zip(*attrs))}
-    return expand(
-        "analysis/sonar/{subject}.{locus}/{specimen}/"
-        "output/tables/{specimen}_rearrangements.tsv", zip, **attrs)
+    return expand(pattern, zip, **attrs)
 
 TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
@@ -89,10 +88,15 @@ TARGET_GERMLINE = make_target_germline()
 TARGET_GERMLINE_GENBANK = make_target_germline(
     "analysis/germline-genbank/{subject}.{locus}/{{segment}}.fasta",
     (("IGH", "5695"), ("IGL", "5695")))
-TARGET_SONAR_1 = make_target_sonar_1()
+TARGET_SONAR_1 = make_target_sonar()
+TARGET_SONAR_2_ID_DIV = make_target_sonar(
+    "analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab")
 
 rule all_sonar_1:
     input: TARGET_SONAR_1
+
+rule all_sonar_2_id_div:
+    input: TARGET_SONAR_2_ID_DIV
 
 rule all_igdiscover:
     input: TARGET_IGDISCOVER
@@ -566,6 +570,7 @@ JMOTIF = {
     "IGL": "TT[C|T][G|A]G"}
 
 rule sonar_module_1:
+    """SONAR module 1 (antibody sequence annotation and clustering)"""
     output:
         fasta=WD_SONAR/"output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
         rearr=WD_SONAR/"output/tables/{specimen}_rearrangements.tsv"
@@ -604,6 +609,50 @@ rule sonar_module_1:
             sonar blast_J {params.libd_arg} {params.libj_arg} --noC --threads {threads} 2>&1 | tee -a {log}
             sonar finalize --jmotif '{params.jmotif}' --threads {threads} 2>&1 | tee -a {log}
             sonar cluster_sequences --id {params.cluster_id_fract} --min2 {params.cluster_min2} 2>&1 | tee -a {log}
+        """
+
+rule sonar_gather_mature:
+    """Get heavy or light chain mature antibody sequences as references for SONAR."""
+    output: WD_SONAR/"mab/mab.fasta"
+    run:
+        seq_col = "heavy_sequence" if wildcards.locus == "IGH" else "light_sequence"
+        seen = {""} # skip duplicates below, but always skip empty entries too
+        with open(output[0], "wt") as f_out:
+            for attrs in METADATA["isolates"]:
+                if seq_col == "light_sequence" and attrs["light_locus"] != wildcards.locus:
+                    # Skip light chain sequences that are for the other locus
+                    # than whatever was amplified here
+                    continue
+                seqid = attrs["antibody_isolate"]
+                seq = attrs[seq_col]
+                if attrs["subject"] == wildcards.subject and seq not in seen:
+                    f_out.write(f">{seqid} {attrs['antibody_lineage']}\n")
+                    f_out.write(attrs[seq_col]+"\n")
+                    seen.add(seq)
+
+rule sonar_v_trunc:
+    """Truncate germline V sequences through the conserved C just before CDR3, for SONAR"""
+    output: WD_SONAR/"germline/V.cysTruncated.fasta"
+    input: f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta",
+    shell: "scripts/truncate_v.py {input} {output}"
+
+rule sonar_module_2_id_div:
+    """SONAR module 2 IDentity (to V) and DIVergence (to mature) calculations"""
+    output: WD_SONAR/"output/tables/{specimen}_goodVJ_unique_id-div.tab"
+    input:
+        V=WD_SONAR/"germline/V.cysTruncated.fasta",
+        fasta=WD_SONAR/"output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
+        mab=WD_SONAR/"mab/mab.fasta"
+    params:
+        wd_sonar=lambda w: expand(str(WD_SONAR), **w),
+        input_v=lambda w, input: Path(input.V).resolve(),
+        input_mab=lambda w, input: Path(input.mab).resolve()
+    singularity: "docker://jesse08/sonar"
+    threads: 4
+    shell:
+        """
+            cd {params.wd_sonar}
+            sonar id-div -g "{params.input_v}" -a "{params.input_mab}" -t {threads}
         """
 
 ### Output
