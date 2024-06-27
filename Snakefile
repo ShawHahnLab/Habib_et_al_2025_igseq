@@ -675,9 +675,11 @@ rule output_tableS2:
                 if row["v_call"].startswith("IGH"):
                     key_genes_out = "Heavy Ig genes"
                     keys_gene_in = ("vh", "dh", "jh")
+                    key_v_div = "VH %nt mut"
                 else:
                     key_genes_out = "Light Ig genes"
                     keys_gene_in = ("vl", "jl")
+                    key_v_div = "VL %nt mut"
                 calls = " ".join(final_gene_name(lineage_calls[lineage][x]) for x in keys_gene_in)
                 if lineage in lineages:
                     subject = "RM" + isolate_attrs["subject"]
@@ -686,6 +688,7 @@ rule output_tableS2:
                     row_out["Timepoint"] = "wk" + str(isolate_attrs["timepoint"])
                     row_out["mAb ID"] = row["sequence_id"]
                     row_out[key_genes_out] = calls
+                    row_out[key_v_div] = round(100-float(row["v_identity"]), 1)
                     row_out["_lineage"] = lineage
         out = list(out.values())
         def sorter(row):
@@ -701,7 +704,8 @@ rule output_tableS2:
         with open(output[0], "w") as f_out:
             writer = csv.DictWriter(
                 f_out,
-                ["Animal ID", "Timepoint", "mAb ID", "Heavy Ig genes", "Light Ig genes"],
+                ["Animal ID", "Timepoint", "mAb ID", "Heavy Ig genes", "Light Ig genes",
+                    "VH %nt mut", "VL %nt mut"],
                 lineterminator="\n")
             writer.writeheader()
             writer.writerows(out)
