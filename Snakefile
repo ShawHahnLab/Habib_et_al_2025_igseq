@@ -655,6 +655,75 @@ rule sonar_module_2_id_div:
             sonar id-div -g "{params.input_v}" -a "{params.input_mab}" -t {threads}
         """
 
+rule sonar_list_members_for_lineage:
+    # gets all the seq IDs as in the input mab antibody FASTA and save in a
+    # text file, so they can be given to sonar get_island like "--mab ID1 --mab
+    # ID2 ..." (as opposed to "--mab =a" for all of them from the ID/DIV table)
+    output: WD_SONAR / "mab/mab.{antibody_lineage}.txt"
+    run:
+        seq_col = "heavy_sequence" if wildcards.locus == "IGH" else "light_sequence"
+        seen = {""} # same logic as for sonar_gather_mature
+        with open(output[0], "wt") as f_out:
+            for attrs in METADATA["isolates"]:
+                seq = attrs[seq_col]
+                seqid = attrs["antibody_isolate"]
+                if attrs["subject"] == wildcards.subject \
+                        and seq not in seen and \
+                        attrs["antibody_lineage"] == wildcards.antibody_lineage:
+                    f_out.write(f"{seqid}\n")
+                    seen.add(seq)
+
+# NOTE this step is interactive over X11
+##
+# To get X working with Snakemake + singularity I had to append both of these
+# arguments to the snakemake call (where our /home is mounted from /data/home):
+#
+#     --use-singularity --singularity-args "-B /home -B /data/home -H /home/$USER"
+#
+# I think these home directory options are needed so that the Xauthority stuff
+# works but I'm not totally sure.   Using a regular Singularity image doesn't
+# need this so I think it must be something about how Snakemake calls
+# singularity.
+rule sonar_module_2_id_div_island:
+    output:
+        seqids=WD_SONAR / "output/tables/islandSeqs_{antibody_lineage}.txt"
+    input:
+        iddiv=WD_SONAR / "output/tables/{specimen}_goodVJ_unique_id-div.tab",
+        mab=WD_SONAR / "mab/mab.{antibody_lineage}.txt"
+    singularity: "docker://jesse08/sonar"
+    params:
+        wd_sonar=lambda w: expand(str(WD_SONAR), **w),
+        input_iddiv=lambda w, input: Path(input.iddiv).resolve(),
+        outprefix=lambda w, output: Path(output.seqids).stem
+    shell:
+        """
+            mabargs=$(sed 's/^/--mab /' {input.mab})
+            cd {params.wd_sonar}
+            sonar get_island {params.input_iddiv} $mabargs --output {params.outprefix} --plotmethod binned
+        """
+
+rule sonar_module_2_id_div_getfasta:
+    """SONAR 2: Extract FASTA matching selected island's seq IDs."""
+    output:
+        fasta=WD_SONAR / "output/sequences/nucleotide/islandSeqs_{txt}.fa"
+    input:
+        fasta=WD_SONAR / "output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
+        seqids=WD_SONAR / "output/tables/islandSeqs_{txt}.txt"
+    singularity: "docker://jesse08/sonar"
+    params:
+        wd_sonar=lambda w: expand(str(WD_SONAR), **w),
+        input_fasta=lambda w, input: Path(input.fasta).resolve(),
+        input_seqids=lambda w, input: Path(input.seqids).resolve(),
+        output_fasta=lambda w, input, output: Path(output.fasta).resolve()
+    shell:
+        """
+            cd {params.wd_sonar}
+            sonar getFastaFromList \
+                -l {params.input_seqids} \
+                -f {params.input_fasta} \
+                -o {params.output_fasta}
+        """
+
 ### Output
 #
 # Some final summary outputs approximating what's shown in the paper itself.
