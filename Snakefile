@@ -868,6 +868,37 @@ rule output_tableS2:
             writer.writeheader()
             writer.writerows(out)
 
+def input_for_figS3(w):
+    subject = {"A": "42056", "B": "6561", "C": "V031"}[w.panel]
+    specimen = {"A": "RM42056WK72IGG", "B": "RM6561WK104IGG", "C": "RMV031WK56IGG"}[w.panel]
+    targets = {
+        "isolates": "metadata/isolates.csv",
+        "junctions": f"figS3{w.panel}_intermediate_junctions.txt",
+        "summary_by_lineage": "analysis/isolates/summary_by_lineage.csv",
+        "v": f"analysis/sonar/{subject}.IGH/{specimen}/germline/V.cysTruncated.fasta",
+        "sonar": f"analysis/sonar/{subject}.IGH/{specimen}/output/sequences/nucleotide/{specimen}_goodVJ_unique.fa"}
+    return targets
+
+def params_for_figS3(w):
+    lineage = {"A": "42056-a", "B": "6561-a", "C": "V031-a"}[w.panel]
+    d_pos = {"A": 21, "B": 27, "C": 21}[w.panel]
+    gap_pos = {"A": 0, "B": 49, "C": 34}[w.panel]
+    gap_len = {"A": 0, "B": 3, "C": 6}[w.panel]
+    return {"lineage": lineage, "d_pos": d_pos, "gap_pos": gap_pos, "gap_len": gap_len}
+
+rule output_figS3:
+    input: expand("output/figS3{panel}.fa", panel = ["A", "B", "C"])
+
+rule output_figS3A:
+    output: "output/figS3{panel}.fa"
+    input: unpack(input_for_figS3)
+    params: params_for_figS3
+    shell:
+        """
+            scripts/fig_s3.py {params[0][lineage]} {input.junctions} {params[0][d_pos]} {output} \
+            --gap-pos {params[0][gap_pos]} --gap-len {params[0][gap_len]}
+        """
+
 ### Info from paper itself
 
 rule all_from_paper:
