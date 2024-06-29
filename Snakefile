@@ -873,7 +873,7 @@ def input_for_figS3(w):
     specimen = {"A": "RM42056WK72IGG", "B": "RM6561WK104IGG", "C": "RMV031WK56IGG"}[w.panel]
     targets = {
         "isolates": "metadata/isolates.csv",
-        "junctions": f"figS3{w.panel}_intermediate_junctions.txt",
+        "junctions": f"from-paper/figS3{w.panel}_intermediate_junctions.txt",
         "summary_by_lineage": "analysis/isolates/summary_by_lineage.csv",
         "v": f"analysis/sonar/{subject}.IGH/{specimen}/germline/V.cysTruncated.fasta",
         "sonar": f"analysis/sonar/{subject}.IGH/{specimen}/output/sequences/nucleotide/{specimen}_goodVJ_unique.fa"}
