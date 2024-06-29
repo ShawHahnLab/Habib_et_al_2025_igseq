@@ -51,17 +51,20 @@ def _infer_junct_start(path, seq_id):
     raise ValueError(f"No cysTruncated {seq_id}?")
 
 def _gather_members(path_junctions, path_seqs):
+    """Get bulk NGS sequences with junctions matching the expected seqs"""
+    # only keep representative examples as given in the this list, and use this
+    # order for the output
     with open(path_junctions, encoding="ASCII") as f_in:
         juncts = [line.strip() for line in f_in]
     keepers = []
-    seen = set()
+    juncts_left = juncts[:]
     for rec in SeqIO.parse(path_seqs, "fasta"):
         seq = str(rec.seq)
         junct = re.search("junction=([^ ]+)", rec.description).group(1)
-        if junct in juncts and junct not in seen:
+        if junct in juncts_left:
+            juncts_left.pop(juncts_left.index(junct))
             # truncate last NT
             keepers.append([rec.id, junct, seq[:-1]])
-            seen.add(junct)
     keepers.sort(key=lambda info: juncts.index(info[1]))
     return keepers
 
