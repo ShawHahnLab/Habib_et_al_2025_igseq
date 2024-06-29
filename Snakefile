@@ -341,16 +341,54 @@ rule igdiscover:
             cd $(dirname {output.stats})/.. && igdiscover run --cores {threads}
         """
 
+rule igdiscover_custom_j_discovery:
+    """Use more stringent approach for germline J inference"""
+    output:
+        tab="analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/J.tab",
+        fasta="analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/J.fasta"
+    input:
+        # (This command actually uses iteration-01's J.fasta and
+        # filtered.tsv.gz but I don't have those listed as part of the
+        # input/output paths in all this.  So I'll just request the output of
+        # my igdiscover rule.)
+        db_j="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/J.fasta",
+    params:
+        db_j="analysis/igdiscover/{ref}/{locus}/{subject}/iteration-01/database/J.fasta",
+        tab="analysis/igdiscover/{ref}/{locus}/{subject}/iteration-01/filtered.tsv.gz",
+        jcov=100,
+        ratio=0.3
+    log:
+        conda="analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/conda_build.txt"
+    conda: "igdiscover.yml"
+    shell:
+        """
+            arg_j_cov=""
+            if [[ "{params.jcov}" != "" ]]; then
+                arg_j_cov="--j-coverage {params.jcov}"
+            fi
+            arg_allele_ratio=""
+            if [[ "{params.ratio}" != "" ]]; then
+                arg_allele_ratio="--allele-ratio {params.ratio}"
+            fi
+            conda list --explicit > {log.conda}
+            igdiscover discoverjd --database {params.db_j} \
+                --gene J $arg_j_cov $arg_allele_ratio \
+                {params.tab} --fasta {output.fasta} > {output.tab}
+        """
+
+### Germline (final versions of individualized germline references)
+
 def input_for_germline(w):
     targets = {}
+    ref="kimdb" if w.locus == "IGH" else "sonarramesh"
     for seg in ["V", "D", "J"]:
-        targets[seg] = expand(
-            "analysis/igdiscover/{ref}/{locus}/{subject}/final/database/{seg}.fasta",
-            ref="kimdb" if w.locus == "IGH" else "sonarramesh",
-            locus=w.locus, subject=w.subject, seg=seg)
+        pattern = "analysis/igdiscover/{ref}/{locus}/{subject}/" + \
+            ("custom_j_discovery/J.fasta" if seg == "J" else "final/database/{seg}.fasta")
+        targets[seg] = expand(pattern, ref=ref, locus=w.locus, subject=w.subject, seg=seg)
     return targets
 
 rule germline:
+    """Prep germline files from IgDiscover's output"""
     output:
         V="analysis/germline/{subject}.{locus}/V.fasta",
         D="analysis/germline/{subject}.{locus}/D.fasta",
