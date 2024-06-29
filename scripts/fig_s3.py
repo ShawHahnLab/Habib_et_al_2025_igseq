@@ -11,7 +11,6 @@ actually did originally.
 """
 
 import re
-import sys
 import csv
 import argparse
 from Bio import SeqIO
