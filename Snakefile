@@ -261,7 +261,17 @@ rule igdiscover_db_sonarramesh:
     params:
         outdir="analysis/igdiscover/sonarramesh/{locus}"
     conda: "igseq.yml"
-    shell: "igseq vdj-gather sonarramesh/IGH/IGHD sonarramesh/{wildcards.locus} -o {params.outdir}"
+    # (The grep process will keep only those starting with "IG" which will
+    # exclude those prefixed with "ORF".  This way we don't need to manually
+    # review and remove a spurious IGLV7-ADJ*01 from 40591's IGL
+    # results at the end that appears to be expressed at low levels but
+    # nonfunctional.)
+    shell:
+        """
+            igseq show sonarramesh/{wildcards.locus}/{wildcards.locus}V | grep -A1 --no-group-sep '^>IG' > {output[0]}
+            igseq show sonarramesh/IGH/IGHD > {output[1]}
+            igseq show sonarramesh/{wildcards.locus}/{wildcards.locus}J > {output[2]}
+        """
 
 rule igdiscover_db_kimdb:
     """Prep IgDiscover starting database (KIMDB 1.1 for heavy chain)"""
@@ -385,6 +395,7 @@ def input_for_germline(w):
         pattern = "analysis/igdiscover/{ref}/{locus}/{subject}/" + \
             ("custom_j_discovery/J.fasta" if seg == "J" else "final/database/{seg}.fasta")
         targets[seg] = expand(pattern, ref=ref, locus=w.locus, subject=w.subject, seg=seg)
+    targets["ref_V"] = expand("analysis/igdiscover/{ref}/{locus}/V.fasta", ref=ref, locus=w.locus)
     return targets
 
 rule germline:
@@ -394,9 +405,18 @@ rule germline:
         D="analysis/germline/{subject}.{locus}/D.fasta",
         J="analysis/germline/{subject}.{locus}/J.fasta",
     input: unpack(input_for_germline)
+    # A special case for 6561: I spotted a "novel" germline sequence for IGL,
+    # IGLV4-ACF*02_S2122, that's actually identical to to IGLV4-ACF*02 in the
+    # starting database.  It's not the only case like this but I noticed this
+    # one because lineage 6561-a uses it, so I reverted the sequence ID for
+    # this one specifically.
     shell:
         """
-            cp {input.V} {output.V}
+            if [[ {wildcards.subject} == 6561 ]]; then
+                scripts/revert_igdiscover_names.py {input.ref_V} {input.V} {output.V}
+            else
+                cp {input.V} {output.V}
+            fi
             cp {input.D} {output.D}
             cp {input.J} {output.J}
         """
