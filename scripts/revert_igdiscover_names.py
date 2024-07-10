@@ -23,8 +23,9 @@ def revert_igdiscover_names(ref_in, igdisc_in, igdisc_out):
         for rec in SeqIO.parse(igdisc_in, "fasta"):
             orig_id = ref.get(str(rec.seq))
             if "_S" in rec.id and re.sub("_S.*", "", rec.id) == orig_id:
-                sys.stderr.write(f"{rec.id} -> {orig_id}\n")
+                sys.stderr.write(f"{igdisc_out}: {rec.id} -> {orig_id}\n")
                 rec.id = orig_id
+                rec.description = ""
             SeqIO.write(rec, f_out, "fasta-2line")
 
 if __name__ == "__main__":

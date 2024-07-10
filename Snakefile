@@ -53,7 +53,9 @@ def make_target_igdiscover():
     attrs.sort()
     attrs = {key: val for key, val in zip(("ref", "locus", "subject"), zip(*attrs))}
     return expand(
-        "analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json", zip, **attrs)
+        ["analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json",
+        "analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/J.fasta"],
+        zip, **attrs)
 
 def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}}.fasta", extra=None):
     attrs = set()
