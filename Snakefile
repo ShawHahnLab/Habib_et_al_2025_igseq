@@ -84,8 +84,8 @@ def make_target_sonar(pattern="analysis/sonar/{subject}.{locus}/{specimen}/outpu
     attrs = {key: val for key, val in zip(("subject", "locus", "specimen"), zip(*attrs))}
     return expand(pattern, zip, **attrs)
 
-TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
-TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample"] for row in METADATA["samples"]])
+TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
+TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 TARGET_IGDISCOVER = make_target_igdiscover()
 TARGET_GERMLINE = make_target_germline()
 TARGET_GERMLINE_GENBANK = make_target_germline(
@@ -115,25 +115,6 @@ rule all_trim:
 
 rule all_merge:
     input: TARGET_MERGE
-
-rule metadata_samples:
-    output: "metadata/samples.csv"
-    input: "metadata/biosamples.tsv"
-    run:
-        with open(input[0]) as f_in, open(output[0], "w") as f_out:
-            writer = csv.DictWriter(
-                f_out,
-                ["Sample", "Run", "Specimen", "BarcodeFwd", "BarcodeRev", "Chain", "Type"],
-                lineterminator="\n")
-            writer.writeheader()
-            for row in csv.DictReader(f_in, delimiter="\t"):
-                row_out = {}
-                row["igseq_Sample"] = row["sample_name"]
-                for key, val in row.items():
-                    key2 = key.removeprefix("igseq_")
-                    if key2 in writer.fieldnames:
-                        row_out[key2] = val
-                writer.writerow(row_out)
 
 rule download_genbank:
     output: "analysis/genbank/{accession}.{rettype}"
@@ -223,7 +204,7 @@ rule trim:
     input:
         r1="analysis/demux/{sample}.R1.fastq.gz",
         r2="analysis/demux/{sample}.R2.fastq.gz",
-        samples="metadata/samples.csv"
+        samples="analysis/trim/samples.csv"
     log:
         conda="analysis/trim/{sample}.trim.conda_build.txt"
     conda: "igseq.yml"
@@ -237,6 +218,25 @@ rule trim:
                 --outdir $(dirname {output.r1}) \
                 {input.r1} {input.r2}
         """
+
+rule trim_samples:
+    output: "analysis/trim/samples.csv"
+    input: "metadata/biosamples.tsv"
+    run:
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            writer = csv.DictWriter(
+                f_out,
+                ["Sample", "Run", "Specimen", "BarcodeFwd", "BarcodeRev", "Chain", "Type"],
+                lineterminator="\n")
+            writer.writeheader()
+            for row in csv.DictReader(f_in, delimiter="\t"):
+                row_out = {}
+                row["igseq_Sample"] = row["sample_name"]
+                for key, val in row.items():
+                    key2 = key.removeprefix("igseq_")
+                    if key2 in writer.fieldnames:
+                        row_out[key2] = val
+                writer.writerow(row_out)
 
 rule merge:
     output:
