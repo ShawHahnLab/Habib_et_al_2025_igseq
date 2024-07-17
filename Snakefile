@@ -2,6 +2,7 @@
 
 import csv
 from collections import defaultdict
+from Bio import SeqIO
 
 # "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
 # "germline" to create them from scratch first
@@ -394,10 +395,9 @@ def input_for_germline(w):
     targets = {}
     ref="kimdb" if w.locus == "IGH" else "sonarramesh"
     for seg in ["V", "D", "J"]:
-        pattern = "analysis/igdiscover/{ref}/{locus}/{subject}/" + \
-            ("custom_j_discovery/J.fasta" if seg == "J" else "final/database/{seg}.fasta")
-        targets[seg] = expand(pattern, ref=ref, locus=w.locus, subject=w.subject, seg=seg)
-    targets["ref_V"] = expand("analysis/igdiscover/{ref}/{locus}/V.fasta", ref=ref, locus=w.locus)
+        targets[seg] = f"analysis/igdiscover/{ref}/{w.locus}/{w.subject}/final/database/{seg}.fasta"
+    targets["filt_J"] = f"analysis/igdiscover/{ref}/{w.locus}/{w.subject}/custom_j_discovery/J.fasta"
+    targets["ref_V"] = f"analysis/igdiscover/{ref}/{w.locus}/V.fasta"
     return targets
 
 rule germline:
@@ -407,20 +407,30 @@ rule germline:
         D="analysis/germline/{subject}.{locus}/D.fasta",
         J="analysis/germline/{subject}.{locus}/J.fasta",
     input: unpack(input_for_germline)
-    # A special case for 6561: I spotted a "novel" germline sequence for IGL,
-    # IGLV4-ACF*02_S2122, that's actually identical to to IGLV4-ACF*02 in the
-    # starting database.  It's not the only case like this but I noticed this
+    # Special cases for 6561:
+    #
+    # For V, I spotted a "novel" germline sequence for IGL, IGLV4-ACF*02_S2122,
+    # that's actually identical to to IGLV4-ACF*02 in the starting database.
+    # It's not the only convoluted naming case like this, but I noticed this
     # one because lineage 6561-a uses it, so I reverted the sequence ID for
     # this one specifically.
+    #
+    # For J, 6561 is the only case where a J sequence in the starting DB is
+    # subsequently filtered out by the custom_j_discovery logic.  Manual
+    # inspection shows that 6561 evidently does really have a variant of IGHJ1
+    # (KIMDB has IGHJ1-1*01 while Ramesh/IMGT has that same one as IGHJ1*01,
+    # plus a synonymous variant IGHJ1*02 ending in TCCG versus TCAG) so I'm
+    # bypassing the J filtering for 6561.
     shell:
         """
             if [[ {wildcards.subject} == 6561 ]]; then
                 scripts/revert_igdiscover_names.py {input.ref_V} {input.V} {output.V}
+                cp {input.J} {output.J}
             else
                 cp {input.V} {output.V}
+                cp {input.filt_J} {output.J}
             fi
             cp {input.D} {output.D}
-            cp {input.J} {output.J}
         """
 
 rule germline_genbank:
@@ -431,7 +441,9 @@ rule germline_genbank:
         J="analysis/germline-genbank/{subject}.{locus}/J.fasta",
     input:
         VJ="metadata/igdiscover.csv",
-        D="analysis/igdiscover/kimdb/IGH/D.fasta",
+        # (In the light chain case the D file is just a placeholder to match
+        # IgDiscover and provide a complete reference for igblast)
+        D=lambda w: "analysis/igdiscover/" + ("kimdb" if w.locus == "IGH" else "sonarramesh") + "/{locus}/D.fasta",
         HJ="analysis/igdiscover/kimdb/IGH/J.fasta",
         LJ="analysis/igdiscover/sonarramesh/IGL/J.fasta"
     run:
@@ -442,7 +454,12 @@ rule germline_genbank:
                     seqid = row["sequence_id"]
                     seq = row["sequence"]
                     handle.write(f">{seqid}\n{seq}\n")
-        shell("cp {input.D} {output.D}")
+        seen = set()
+        with open(input.D) as f_in, open(output.D, "w") as f_out:
+            for rec in SeqIO.parse(f_in, "fasta"):
+                if str(rec.seq) not in seen:
+                    SeqIO.write(rec, f_out, "fasta-2line")
+                    seen.add(str(rec.seq))
         # For 5695, use J from existing DB to get a complete reference.
         # (5695 is a special case since it was previously published so we
         # didn't re-deposit the reference in GenBank with these.)
