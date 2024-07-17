@@ -95,6 +95,9 @@ TARGET_SONAR_1 = make_target_sonar()
 TARGET_SONAR_2_ID_DIV = make_target_sonar(
     "analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab")
 
+rule all:
+    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV
+
 rule all_sonar_1:
     input: TARGET_SONAR_1
 
