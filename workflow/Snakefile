@@ -6,7 +6,7 @@ from Bio import SeqIO
 
 # "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
 # "germline" to create them from scratch first
-GERMLINE="germline-genbank"
+GERMLINE="germline"
 
 wildcard_constraints:
     sample="[-A-Za-z0-9]+",
