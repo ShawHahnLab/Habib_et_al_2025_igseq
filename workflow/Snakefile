@@ -58,6 +58,17 @@ def make_target_igdiscover():
         "analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/J.fasta"],
         zip, **attrs)
 
+def make_target_miningd():
+    subjects = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgM+":
+            subjects.add(row["igseq_Specimen_Subject"])
+    subjects = list(subjects)
+    subjects.sort()
+    return expand(
+        "analysis/mining-d/{subject}.output.{pval}.txt",
+        subject=subjects, pval=("default", "sensitive"))
+
 def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}}.fasta", extra=None):
     attrs = set()
     for row in METADATA["biosamples"]:
@@ -98,6 +109,7 @@ def make_target_igblast_isolates():
 TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 TARGET_IGDISCOVER = make_target_igdiscover()
+TARGET_MININGD = make_target_miningd()
 TARGET_GERMLINE = make_target_germline()
 TARGET_GERMLINE_GENBANK = make_target_germline(
     "analysis/germline-genbank/{subject}.{locus}/{{segment}}.fasta",
@@ -109,7 +121,7 @@ TARGET_IGBLAST_ISOLATES = make_target_igblast_isolates()
 TARGET_OUTPUT = expand("output/{thing}", thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
 
 rule all:
-    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_OUTPUT
+    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_MININGD + TARGET_OUTPUT
 
 rule all_output:
     input: TARGET_OUTPUT
@@ -125,6 +137,9 @@ rule all_sonar_2_id_div:
 
 rule all_igdiscover:
     input: TARGET_IGDISCOVER
+
+rule all_miningd:
+    input: TARGET_MININGD
 
 rule all_germline:
     input: TARGET_GERMLINE
@@ -411,6 +426,80 @@ rule igdiscover_custom_j_discovery:
                 --gene J $arg_j_cov $arg_allele_ratio \
                 {params.tab} --fasta {output.fasta} > {output.tab}
         """
+
+### MINING-D (D gene inference with IgM reads' CDR3s)
+
+def input_for_miningd_get_cdrh3s(w):
+    """List of SONAR AIRR tables for all IgM samples for one subject"""
+    specs = []
+    for attrs in METADATA["biosamples"]:
+        if attrs["igseq_Specimen_Subject"] == w.subject and "IgM" in attrs["igseq_Specimen_CellType"]:
+            specs.append(attrs["igseq_Specimen"])
+    return expand(
+        "analysis/sonar/{subject}.IGH/{specimen}/output/tables/{specimen}_rearrangements.tsv",
+        subject=w.subject, specimen=specs)
+
+rule miningd_get_cdrh3s:
+    """Gather CDRH3 sequences from SONAR's clustered antibody sequences"""
+    # This uses SONAR simply to provide CDR3s of cleaned-up, deduplicated, and
+    # clustered antibody sequences, even though we otherwise aren't generally
+    # analyzing IgM+ material with SONAR.
+    output: "analysis/mining-d/{subject}.cdr3.fasta"
+    input: input_for_miningd_get_cdrh3s
+    shell: "scripts/cdr3s_from_airr.py {input} {output}"
+
+# Note that the order and naming of sequences changes from run to run, but the
+# sequences themselves do appear to be the same for any given input.  The
+# miningd_final rule below should give consistent output.
+rule miningd_run:
+    """FASTA of inferred D sequences from MINING-D"""
+    output: "analysis/mining-d/{subject}.output.{pval}.fasta"
+    input: "analysis/mining-d/{subject}.cdr3.fasta"
+    log:
+        main="analysis/mining-d/{subject}.{pval}.log.txt",
+        conda="analysis/mining-d/{subject}.{pval}.conda_build.txt"
+    conda: "mining-d.yml"
+    threads: 8
+    params:
+        # The authors thought 600 was a good choice for rhesus macaque and
+        # human
+        num_k_mers=600,
+        # 4.5e-36 is The default setting.  Will tend to leave off a few
+        # nucleotides at the edges, but will avoid false positives.
+        # (If a wildcard value is given that's not "default" or "sensitive",
+        # take that text itself as the P value threshold.)
+        p_val_th=lambda w: {"default": "4.5e-36", "sensitive": "4.5e-16"}.get(w.pval, w.pval)
+    shell:
+        """
+            conda list --explicit > {log.conda}
+            numseqs_in=$(grep -c "^>" {input} || echo 0)
+            echo "start: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> {log.main}
+            echo "threads: {threads}" >> {log.main}
+            echo "input: {input}" >> {log.main}
+            echo "input seqs: $numseqs_in" >> {log.main}
+            echo "num_k_mers: {params.num_k_mers}" >> {log.main}
+            echo "p_val_th: {params.p_val_th}" >> {log.main}
+            python MINING-D/MINING_D.py -t {threads} \
+                -n {params.num_k_mers} \
+                -p {params.p_val_th} \
+                -i {input} -o {output}
+            numseqs_out=$(grep -c "^>" {output} || echo 0)
+            echo "output seqs: $numseqs_out" >> {log.main}
+            echo "end: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> {log.main}
+        """
+
+# Sort the sequences and write as plain text, one sequence per line, to get the
+# same output for the same input.
+rule miningd_final:
+    """Simplified sorted list of D sequences from original MINING-D output"""
+    output: "analysis/mining-d/{subject}.output.{pval}.txt"
+    input: "analysis/mining-d/{subject}.output.{pval}.fasta"
+    run:
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            seqs = [str(record.seq) for record in SeqIO.parse(f_in, "fasta")]
+            seqs.sort()
+            for seq in seqs:
+                f_out.write(f"{seq}\n")
 
 ### Germline (final versions of individualized germline references)
 
@@ -850,6 +939,7 @@ def indexish(items, item, default=-1):
         return default
 
 rule output_fig1b:
+    """Summary table of antibody sequence characteristics"""
     output: "output/fig1b.csv"
     input: "analysis/isolates/summary.csv"
     run:
@@ -879,6 +969,7 @@ rule output_fig1b:
             writer.writerows(out)
 
 rule output_fig2a:
+    """Summary table of antibody heavy chain germline sequence usage"""
     output: "output/fig2a.csv"
     input: "analysis/isolates/summary.csv"
     run:
@@ -903,6 +994,7 @@ rule output_fig2a:
             writer.writerows(out)
 
 rule output_tableS2:
+    """Summary table of animal, antibody, and lineage information"""
     output: "output/tableS2.csv"
     input: "analysis/isolates/summary.csv"
     run:
@@ -961,7 +1053,8 @@ def params_for_figS3(w):
 rule output_figS3:
     input: expand("output/figS3{panel}.fa", panel = ["A", "B", "C"])
 
-rule output_figS3A:
+rule output_figS3panel:
+    """FASTA for VDJ segments, intermediate lineage members, and mature isolated antibody for one lineage"""
     output: "output/figS3{panel}.fa"
     input: unpack(input_for_figS3)
     params: params_for_figS3

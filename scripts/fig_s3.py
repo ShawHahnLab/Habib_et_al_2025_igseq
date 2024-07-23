@@ -7,7 +7,9 @@ The logic of putting the sequences into alignments here is is *very* brittle,
 but I'm just including it as a sanity-check on the example intermediate lineage
 members shown in Figure S3.  See also: the "island" selection in the SONAR
 module 2 snakemake rules, to manually select full sets of lineage members as we
-actually did in the original analysis.
+actually did in the original analysis.  For this script we just pull out
+sequences from the bulk repertoire NGS data that have the junctions shown in
+the paper figure.
 """
 
 import re
