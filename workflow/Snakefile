@@ -84,6 +84,17 @@ def make_target_sonar(pattern="analysis/sonar/{subject}.{locus}/{specimen}/outpu
     attrs = {key: val for key, val in zip(("subject", "locus", "specimen"), zip(*attrs))}
     return expand(pattern, zip, **attrs)
 
+def make_target_igblast_isolates():
+    attrs = set()
+    for row in METADATA["isolates"]:
+        attrs.add((row["subject"], "IGH"))
+        if row["light_sequence"]:
+            attrs.add((row["subject"], row["light_locus"]))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("subject", "locus"), zip(*attrs))}
+    return expand("analysis/isolates/{subject}.{locus}/igblast.tsv", zip, **attrs)
+
 TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 TARGET_IGDISCOVER = make_target_igdiscover()
@@ -94,9 +105,17 @@ TARGET_GERMLINE_GENBANK = make_target_germline(
 TARGET_SONAR_1 = make_target_sonar()
 TARGET_SONAR_2_ID_DIV = make_target_sonar(
     "analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab")
+TARGET_IGBLAST_ISOLATES = make_target_igblast_isolates()
+TARGET_OUTPUT = expand("output/{thing}", thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
 
 rule all:
-    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV
+    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_OUTPUT
+
+rule all_output:
+    input: TARGET_OUTPUT
+
+rule all_igblast_isolates:
+    input: TARGET_IGBLAST_ISOLATES
 
 rule all_sonar_1:
     input: TARGET_SONAR_1
@@ -134,7 +153,7 @@ rule genbank_igdiscover_5695:
     params:
         pattern=r".*mulatta clone (?P<sequence_id>[^ ]+) immunoglobulin "
             r".*\((?P<locus>IG[HKL])(?P<segment>[VJ])\) mRNA"
-    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -x subject=5695 {input} -o {output}"
+    shell: "scripts/tabulate_seqs.py -p '{params.pattern}' -x subject=5695 {input} -o {output}"
 
 rule genbank_igdiscover:
     """The new IgDiscover sequences for all subjects"""
@@ -142,8 +161,8 @@ rule genbank_igdiscover:
     input: "genbank-placeholders/igdiscover.txt.gz"
     params:
         pattern=r"Rhesus Macaque (?P<subject>.*) antibody germline sequence for "
-            r"locus (?P<locus>IG[HKL]) (?P<segment>[VJ]) segment",
-    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
+            r"locus (?P<locus>IG[HKL]) (?P<segment>[VJ]) segment"
+    shell: "scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
 
 rule genbank_isolates_5695:
     """Paired heavy and light chain sequences from 5695 from the RHA1 paper"""
@@ -168,8 +187,8 @@ rule genbank_isolates:
     params:
         pattern=r"Rhesus macaque (?P<subject>.*) antibody lineage (?P<antibody_lineage>.*) "
             r"antibody (?P<antibody_isolate>.*) isolated at (?P<timepoint>[0-9]+) weeks "
-            r"post-infection, (?P<locus>IG[HKL]) sequence",
-    shell: "./scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
+            r"post-infection, (?P<locus>IG[HKL]) sequence"
+    shell: "scripts/tabulate_seqs.py -p '{params.pattern}' -f gb {input} -o {output}"
 
 rule metadata_isolates:
     """Table of paired sequences for all lineages"""
@@ -343,7 +362,8 @@ rule igdiscover:
         stats="analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json",
         db_v="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/V.fasta",
         db_d="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/D.fasta",
-        db_j="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/J.fasta"
+        db_j="analysis/igdiscover/{ref}/{locus}/{subject}/final/database/J.fasta",
+        exp_d="analysis/igdiscover/{ref}/{locus}/{subject}/final/expressed_D.tab"
     input:
         yaml="analysis/igdiscover/{ref}/{locus}/{subject}/igdiscover.yaml",
         r1="analysis/igdiscover/{ref}/{locus}/{subject}/reads.fastq.gz",
@@ -408,7 +428,7 @@ rule germline:
     output:
         V="analysis/germline/{subject}.{locus}/V.fasta",
         D="analysis/germline/{subject}.{locus}/D.fasta",
-        J="analysis/germline/{subject}.{locus}/J.fasta",
+        J="analysis/germline/{subject}.{locus}/J.fasta"
     input: unpack(input_for_germline)
     # Special cases for 6561:
     #
@@ -436,12 +456,32 @@ rule germline:
             cp {input.D} {output.D}
         """
 
+rule germline_5695:
+    """Always use GenBank supplied IgDiscover files for 5695"""
+    output:
+        HV="analysis/germline/5695.IGH/V.fasta",
+        HD="analysis/germline/5695.IGH/D.fasta",
+        HJ="analysis/germline/5695.IGH/J.fasta",
+        LV="analysis/germline/5695.IGL/V.fasta",
+        LD="analysis/germline/5695.IGL/D.fasta",
+        LJ="analysis/germline/5695.IGL/J.fasta"
+    input:
+        HV="analysis/germline-genbank/5695.IGH/V.fasta",
+        HD="analysis/germline-genbank/5695.IGH/D.fasta",
+        HJ="analysis/germline-genbank/5695.IGH/J.fasta",
+        LV="analysis/germline-genbank/5695.IGL/V.fasta",
+        LD="analysis/germline-genbank/5695.IGL/D.fasta",
+        LJ="analysis/germline-genbank/5695.IGL/J.fasta"
+    run:
+        for path_in, path_out in zip(input, output):
+            shell("ln -sr {path_in} {path_out}")
+
 rule germline_genbank:
     """Prep germline files with the existing V and J from our GenBank entries"""
     output:
         V="analysis/germline-genbank/{subject}.{locus}/V.fasta",
         D="analysis/germline-genbank/{subject}.{locus}/D.fasta",
-        J="analysis/germline-genbank/{subject}.{locus}/J.fasta",
+        J="analysis/germline-genbank/{subject}.{locus}/J.fasta"
     input:
         VJ="metadata/igdiscover.csv",
         # (In the light chain case the D file is just a placeholder to match
@@ -472,21 +512,10 @@ rule germline_genbank:
 
 ### Isolates
 
-def input_for_igblast_isolates_combined(w):
-    attrs = set()
-    for row in METADATA["isolates"]:
-        attrs.add((row["subject"], "IGH"))
-        if row["light_sequence"]:
-            attrs.add((row["subject"], row["light_locus"]))
-    attrs = list(attrs)
-    attrs.sort()
-    attrs = {key: val for key, val in zip(("subject", "locus"), zip(*attrs))}
-    return expand("analysis/isolates/{subject}.{locus}/igblast.tsv", zip, **attrs)
-
 rule igblast_isolates_combined:
     """Combined TSV of IgBLAST AIRR across heavy+light seqs of all isolates"""
     output: "analysis/isolates/igblast.tsv"
-    input: input_for_igblast_isolates_combined
+    input: TARGET_IGBLAST_ISOLATES
     run:
         with open(output[0], "w") as f_out:
             writer = None
@@ -713,7 +742,8 @@ rule sonar_gather_mature:
 rule sonar_v_trunc:
     """Truncate germline V sequences through the conserved C just before CDR3, for SONAR"""
     output: WD_SONAR/"germline/V.cysTruncated.fasta"
-    input: f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta",
+    input: f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta"
+    conda: "igseq.yml"
     shell: "scripts/truncate_v.py {input} {output}"
 
 rule sonar_module_2_id_div:
@@ -850,7 +880,7 @@ rule output_fig1b:
 
 rule output_fig2a:
     output: "output/fig2a.csv"
-    input: "analysis/isolates/summary.csv",
+    input: "analysis/isolates/summary.csv"
     run:
         mabs = [
             "42056-b.01", "6561-a.01", "40591-a.01", "T646-a.01", "V031-a.01",
