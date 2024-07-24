@@ -2,6 +2,7 @@
 
 import sys
 import gzip
+from csv import DictReader
 from collections import defaultdict
 
 def cdr3s_from_airr(tsvgzs_in, fasta_out):
@@ -37,3 +38,6 @@ def cdr3s_from_airr(tsvgzs_in, fasta_out):
 
 def main():
     cdr3s_from_airr(sys.argv[1:-1], sys.argv[-1])
+
+if __name__ == "__main__":
+    main()
