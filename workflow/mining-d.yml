@@ -1,13 +1,8 @@
 # conda environment YAML for MINING-D
 name: mining-d
 channels:
+  - ShawHahnLab
   - conda-forge
   - defaults
 dependencies:
-  - python=3.6.5
-  - biopython
-  - networkx<2.4
-  - joblib
-  - numpy
-  - scipy
-  - click
+  - mining-d
