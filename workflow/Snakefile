@@ -8,6 +8,10 @@ from Bio import SeqIO
 # "germline" to create them from scratch first
 GERMLINE="germline"
 
+# The Ramesh germline D sequences that we observed in the macaques that were
+# not present in KIMDB.
+RAMESH_D = ["IGHD1-1*01", "IGHD1-39*01", "IGHD3-26*02", "IGHD4-27*02"]
+
 wildcard_constraints:
     sample="[-A-Za-z0-9]+",
     specimen="[A-Za-z0-9]+",
@@ -41,6 +45,14 @@ def load_metadata():
     return metadata
 
 METADATA = load_metadata()
+
+# from `sha256sum filenames`
+def load_checksums():
+    with open("sha256.txt") as f_in:
+        pairs = dict(re.fullmatch(r"([^ ]+) +(.*)", x.strip()).groups()[::-1] for x in f_in)
+    return pairs
+
+CHECKSUMS = load_checksums()
 
 def make_target_igdiscover():
     attrs = set()
@@ -118,7 +130,9 @@ TARGET_SONAR_1 = make_target_sonar()
 TARGET_SONAR_2_ID_DIV = make_target_sonar(
     "analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab")
 TARGET_IGBLAST_ISOLATES = make_target_igblast_isolates()
-TARGET_OUTPUT = expand("output/{thing}", thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
+TARGET_OUTPUT = expand(
+    "output/{thing}",
+    thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "tableS3_d_info.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
 
 rule all:
     input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_MININGD + TARGET_OUTPUT
@@ -448,23 +462,35 @@ rule miningd_get_cdrh3s:
     input: input_for_miningd_get_cdrh3s
     shell: "scripts/cdr3s_from_airr.py {input} {output}"
 
+def checksum_for_miningd_run(w):
+    out = expand("analysis/mining-d/{subject}.output.{pval}.txt", **dict(w))
+    checksum = CHECKSUMS[out[0]]
+    return checksum
+
 # Note that the order and naming of sequences changes from run to run, but the
-# sequences themselves do appear to be the same for any given input.  The
-# miningd_final rule below should give consistent output.
+# sequences themselves do appear to typically be the same for any given input.
+# Though, "typically" is the operative word; to handle the edge cases where
+# there is some slight variation in the output, I'm using file hashes and
+# Snakemake's retries feature to try to ensure we get the exact expected
+# output.  (I *think* this is a result of MINING-D's use of Python sets and
+# dictionaries but I'm not certain.)
 rule miningd_run:
     """FASTA of inferred D sequences from MINING-D"""
-    output: "analysis/mining-d/{subject}.output.{pval}.fasta"
+    output:
+        fasta="analysis/mining-d/{subject}.output.{pval}.fasta",
+        txt=ensure("analysis/mining-d/{subject}.output.{pval}.txt", sha256=checksum_for_miningd_run)
     input: "analysis/mining-d/{subject}.cdr3.fasta"
     log:
         main="analysis/mining-d/{subject}.{pval}.log.txt",
         conda="analysis/mining-d/{subject}.{pval}.conda_build.txt"
     conda: "mining-d.yml"
+    retries: 10
     threads: 8
     params:
         # The authors thought 600 was a good choice for rhesus macaque and
         # human
         num_k_mers=600,
-        # 4.5e-36 is The default setting.  Will tend to leave off a few
+        # 4.5e-36 is the default setting.  Will tend to leave off a few
         # nucleotides at the edges, but will avoid false positives.
         # (If a wildcard value is given that's not "default" or "sensitive",
         # take that text itself as the P value threshold.)
@@ -472,34 +498,71 @@ rule miningd_run:
     shell:
         """
             conda list --explicit > {log.conda}
+            (
             numseqs_in=$(grep -c "^>" {input} || echo 0)
-            echo "start: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> {log.main}
-            echo "threads: {threads}" >> {log.main}
-            echo "input: {input}" >> {log.main}
-            echo "input seqs: $numseqs_in" >> {log.main}
-            echo "num_k_mers: {params.num_k_mers}" >> {log.main}
-            echo "p_val_th: {params.p_val_th}" >> {log.main}
+            echo "start: $(date +'%Y-%m-%d %H:%M:%S %Z')"
+            echo "threads: {threads}"
+            echo "input: {input}"
+            echo "input seqs: $numseqs_in"
+            echo "num_k_mers: {params.num_k_mers}"
+            echo "p_val_th: {params.p_val_th}"
             MINING_D.py -t {threads} \
                 -n {params.num_k_mers} \
                 -p {params.p_val_th} \
-                -i {input} -o {output}
-            numseqs_out=$(grep -c "^>" {output} || echo 0)
-            echo "output seqs: $numseqs_out" >> {log.main}
-            echo "end: $(date +'%Y-%m-%d %H:%M:%S %Z')" >> {log.main}
+                -i {input} -o {output.fasta}
+            numseqs_out=$(grep -c "^>" {output.fasta} || echo 0)
+            echo "output seqs: $numseqs_out"
+            scripts/seq_list.py {output.fasta} {output.txt}
+            echo "end: $(date +'%Y-%m-%d %H:%M:%S %Z')"
+            ) >> {log.main}
         """
 
-# Sort the sequences and write as plain text, one sequence per line, to get the
-# same output for the same input.
-rule miningd_final:
-    """Simplified sorted list of D sequences from original MINING-D output"""
-    output: "analysis/mining-d/{subject}.output.{pval}.txt"
-    input: "analysis/mining-d/{subject}.output.{pval}.fasta"
+
+### Aggregated germline D information (for summarizing evidence across animals)
+
+rule aggr_d_ref:
+    """Make a D reference FASTA with KIMDB + select Ramesh entries"""
+    output: "analysis/aggregate-d/d_ref.fasta"
+    conda: "igseq.yml"
+    params:
+        ramesh_d_pat="(" + "|".join([x.replace("*", r"\*") for x in RAMESH_D]) + ")"
+    shell:
+        """
+            igseq show kimdb/IGH/IGHD > {output}
+            igseq show sonarramesh/IGH/IGHD | \
+                grep -E -A1 --no-group-sep '{params.ramesh_d_pat}' | \
+                sed -r 's/(>.*)/\\1_Ramesh/' >> {output}
+        """
+
+rule aggr_d:
+    """Aggregate germline D information for one animal"""
+    output: "analysis/aggregate-d/{subject}.csv"
+    input:
+        ref_d="analysis/aggregate-d/d_ref.fasta",
+        igdisc_d="analysis/igdiscover/kimdb/IGH/{subject}/final/expressed_D.tab",
+        min_d="analysis/mining-d/{subject}.output.sensitive.fasta"
+    shell: "scripts/aggregate_d.py {input.ref_d} {input.igdisc_d} {input.min_d} {output}"
+
+rule aggr_d_combined:
+    output: "analysis/aggregate-d/all.csv"
+    input: expand("analysis/aggregate-d/{subject}.csv", subject=sorted({attrs["igseq_Specimen_Subject"] for attrs in METADATA["biosamples"] if attrs["igseq_Specimen_CellType"] == "IgM+"}))
+    params:
+        subjects=sorted({attrs["igseq_Specimen_Subject"] for attrs in METADATA["biosamples"]})
     run:
-        with open(input[0]) as f_in, open(output[0], "w") as f_out:
-            seqs = [str(record.seq) for record in SeqIO.parse(f_in, "fasta")]
-            seqs.sort()
-            for seq in seqs:
-                f_out.write(f"{seq}\n")
+        writer = None
+        with open(output[0], "w") as f_out:
+            for subject, path in zip(params.subjects, input):
+                with open(path) as f_in:
+                    reader = csv.DictReader(f_in)
+                    if not writer:
+                        writer = csv.DictWriter(
+                            f_out,
+                            fieldnames=["subject"] + list(reader.fieldnames),
+                            lineterminator="\n")
+                        writer.writeheader()
+                    for row in reader:
+                        row["subject"] = subject
+                        writer.writerow(row)
 
 ### Germline (final versions of individualized germline references)
 
@@ -1063,6 +1126,22 @@ rule output_figS3panel:
             scripts/fig_s3.py {params[0][lineage]} {input.junctions} {params[0][d_pos]} {output} \
             --gap-pos {params[0][gap_pos]} --gap-len {params[0][gap_len]}
         """
+
+rule output_tableS3_d_info:
+    """CSV of the raw germline D information that we summarized in table S3"""
+    output: "output/tableS3_d_info.csv"
+    input: "analysis/aggregate-d/all.csv"
+    run:
+        subjects = [
+            "5695", "6070", "6561", "40591", "41328",
+            "42056", "44715", "T646", "V031", "V033"]
+        with open(input[0]) as f_in, open(output[0], "w") as f_out:
+            reader = csv.DictReader(f_in)
+            rows = list(reader)
+            rows.sort(key=lambda row: (subjects.index(row["subject"]), list(row.values())))
+            writer = csv.DictWriter(f_out, reader.fieldnames, lineterminator="\n")
+            writer.writeheader()
+            writer.writerows(rows)
 
 ### Info from paper itself
 
