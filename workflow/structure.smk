@@ -135,7 +135,7 @@ rule structure_output_figS3panel:
     params: params_for_figS3
     shell:
         """
-            scripts/fig_s3.py {params[0][lineage]} {input.junctions} {params[0][d_pos]} {output} \
+            scripts/structure_fig_s3.py {params[0][lineage]} {input.junctions} {params[0][d_pos]} {output} \
             --gap-pos {params[0][gap_pos]} --gap-len {params[0][gap_len]}
         """
 
