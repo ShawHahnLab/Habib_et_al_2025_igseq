@@ -163,5 +163,5 @@ rule all_from_structure_paper:
 rule from_structure_paper:
     """Download CSV version of item from the structure paper from a copy in Google Sheets"""
     output: "from-structure-paper/{name}.csv"
-    input: "metadata/paper_google_sheets.yml"
+    input: "metadata/structure_paper_google_sheets.yml"
     shell: "scripts/download_google_sheet.py {wildcards.name} {input} {output}"
