@@ -1,5 +1,18 @@
 ### Isolates
 
+def make_target_igblast_isolates():
+    attrs = set()
+    for row in METADATA["isolates"]:
+        attrs.add((row["subject"], "IGH"))
+        if row["light_sequence"]:
+            attrs.add((row["subject"], row["light_locus"]))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("subject", "locus"), zip(*attrs))}
+    return expand("analysis/isolates/{subject}.{locus}/igblast.tsv", zip, **attrs)
+
+TARGET_IGBLAST_ISOLATES = make_target_igblast_isolates()
+
 rule igblast_isolates_combined:
     """Combined TSV of IgBLAST AIRR across heavy+light seqs of all isolates"""
     output: "analysis/isolates/igblast.tsv"
@@ -46,6 +59,7 @@ rule igblast_isolates_lineage_summary:
     output: "analysis/isolates/summary_by_lineage.csv"
     input: "analysis/isolates/igblast.tsv"
     run:
+        from collections import defaultdict
         isolate_map = {row["antibody_isolate"]: row for row in METADATA["isolates"]}
         # gather up a tally by lineage by locus+segment of all observed IgBLAST
         # gene calls, counting entries from ties separately

@@ -1,5 +1,60 @@
 ### SONAR (Lineage tracing with IgG reads)
 
+def make_sonar_rules():
+    """Set up helper SONAR rules for each subject"""
+    subject_locus_specs = {}
+    subject_locus_specs_igg = {}
+    def gather(obj, row):
+        subject = row["igseq_Specimen_Subject"]
+        locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+        if subject not in obj:
+            obj[subject] = {}
+        if locus not in obj[subject]:
+            obj[subject][locus] = []
+        obj[subject][locus].append(row["igseq_Specimen"])
+    for row in METADATA["biosamples"]:
+        gather(subject_locus_specs, row)
+        if "IgG" in row["igseq_Specimen_CellType"]:
+            gather(subject_locus_specs_igg, row)
+    for subject in sorted(subject_locus_specs):
+        # annotation of all reads per biological specimen per locus, for both
+        # IgG+ and IgM+ material
+        targets = []
+        for locus in ("IGH", "IGK", "IGL"):
+            specimens = subject_locus_specs[subject].get(locus, [])
+            targets += expand(
+                "analysis/sonar/{subject}.{locus}/{specimen}/output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
+                subject=subject, locus=locus, specimen=specimens)
+        rule:
+            name: f"sonar_module_1_{subject}"
+            input: targets
+        # Just IgG+, ID/DIV tables for comparing repertoire reads to germline V
+        # and known antibodies of interest for whatever lineage(s) per subject
+        targets = []
+        for locus in ("IGH", "IGK", "IGL"):
+            specimens = subject_locus_specs_igg[subject].get(locus, [])
+            targets += expand(
+                "analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab",
+                subject=subject, locus=locus, specimen=specimens)
+        rule:
+            name: f"sonar_module_2_id_div_{subject}"
+            input: targets
+
+make_sonar_rules()
+
+def make_target_sonar(pattern="analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_rearrangements.tsv"):
+    attrs = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgG+":
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+            subject = row["igseq_Specimen_Subject"]
+            specimen = row["igseq_Specimen"]
+            attrs.add((subject, locus, specimen))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("subject", "locus", "specimen"), zip(*attrs))}
+    return expand(pattern, zip, **attrs)
+
 def input_for_sonar_input(w):
     samples = []
     for row in METADATA["biosamples"]:
@@ -7,6 +62,12 @@ def input_for_sonar_input(w):
         if row["igseq_Specimen"] == w.specimen and locus == w.locus:
             samples.append(row["sample_name"])
     return expand("analysis/merge/{sample}.fastq.gz", sample=samples)
+
+rule all_sonar_module_1:
+    input: make_target_sonar()
+
+rule all_sonar_module_2_id_div:
+    input: make_target_sonar("analysis/sonar/{subject}.{locus}/{specimen}/output/tables/{specimen}_goodVJ_unique_id-div.tab")
 
 rule sonar_input:
     output: "analysis/sonar-input/{specimen}.{locus}.fastq.gz"

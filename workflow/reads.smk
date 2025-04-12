@@ -1,5 +1,14 @@
 ### Basic read processing
 
+TARGET_TRIM = expand("analysis/trim/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
+TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
+
+rule all_trim:
+    input: TARGET_TRIM
+
+rule all_merge:
+    input: TARGET_MERGE
+
 rule trim:
     output:
         r1="analysis/trim/{sample}.R1.fastq.gz",

@@ -1,5 +1,64 @@
 ### IgDiscover (individualized germline references with IgM reads)
 
+def make_target_igdiscover():
+    attrs = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgM+":
+            ref = "kimdb" if row["igseq_Chain"] == "heavy" else "sonarramesh"
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+            subject = row["igseq_Specimen_Subject"]
+            attrs.add((ref, locus, subject))
+    attrs = list(attrs)
+    attrs.sort()
+    attrs = {key: val for key, val in zip(("ref", "locus", "subject"), zip(*attrs))}
+    return expand(
+        ["analysis/igdiscover/{ref}/{locus}/{subject}/stats/stats.json",
+        "analysis/igdiscover/{ref}/{locus}/{subject}/custom_j_discovery/J.fasta"],
+        zip, **attrs)
+
+def make_target_miningd():
+    subjects = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgM+":
+            subjects.add(row["igseq_Specimen_Subject"])
+    subjects = list(subjects)
+    subjects.sort()
+    return expand(
+        "analysis/mining-d/{subject}.output.{pval}.txt",
+        subject=subjects, pval=("default", "sensitive"))
+
+def make_target_germline(pattern="analysis/germline/{subject}.{locus}/{{segment}}.fasta", extra=None):
+    attrs = set()
+    for row in METADATA["biosamples"]:
+        if row["igseq_Specimen_CellType"] == "IgM+":
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+            attrs.add((locus, row["igseq_Specimen_Subject"]))
+    attrs = list(attrs)
+    attrs.sort()
+    if extra:
+        attrs.extend(extra)
+    attrs = {key: val for key, val in zip(("locus", "subject"), zip(*attrs))}
+    return expand(expand(pattern, zip, **attrs), segment=["V", "D", "J"])
+
+TARGET_IGDISCOVER = make_target_igdiscover()
+TARGET_MININGD = make_target_miningd()
+TARGET_GERMLINE = make_target_germline()
+TARGET_GERMLINE_GENBANK = make_target_germline(
+    "analysis/germline-genbank/{subject}.{locus}/{{segment}}.fasta",
+    (("IGH", "5695"), ("IGL", "5695")))
+
+rule all_igdiscover:
+    input: TARGET_IGDISCOVER
+
+rule all_miningd:
+    input: TARGET_MININGD
+
+rule all_germline:
+    input: TARGET_GERMLINE
+
+rule all_germline_genbank:
+    input: TARGET_GERMLINE_GENBANK
+
 rule igdiscover_db_sonarramesh:
     """Prep IgDiscover starting database (SONAR/Ramesh for light chain)"""
     output: expand("analysis/igdiscover/sonarramesh/{{locus}}/{segment}.fasta", segment=["V", "D", "J"])
@@ -333,6 +392,7 @@ rule germline_genbank:
         HJ="analysis/igdiscover/kimdb/IGH/J.fasta",
         LJ="analysis/igdiscover/sonarramesh/IGL/J.fasta"
     run:
+        from Bio import SeqIO
         with open(input.VJ) as f_in, open(output.V, "w") as V_out, open(output.J, "w") as J_out:
             for row in csv.DictReader(f_in):
                 if row["subject"] == wildcards.subject and row["locus"] == wildcards.locus:
@@ -352,4 +412,3 @@ rule germline_genbank:
         if wildcards.subject == "5695":
             ref = input.HJ if wildcards.locus == "IGH" else input.LJ
             shell("cp {ref} {output.J}")
-

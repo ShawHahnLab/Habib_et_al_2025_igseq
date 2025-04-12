@@ -1,6 +1,16 @@
-### Output
+### Output related to the structure paper
 #
 # Some final summary outputs approximating what's shown in the structure paper itself.
+
+TARGET_STRUCTURE_OUTPUT = expand(
+    "output/structure_{thing}",
+    thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "tableS3_d_info.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
+
+#rule all:
+#    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_MININGD + TARGET_OUTPUT
+
+rule all_structure_output:
+    input: TARGET_STRUCTURE_OUTPUT
 
 def final_gene_name(txt):
     """Format the gene names like the paper has them"""
