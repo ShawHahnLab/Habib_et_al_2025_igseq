@@ -3,7 +3,7 @@
 # Some final summary outputs approximating what's shown in the structure paper itself.
 
 TARGET_STRUCTURE_OUTPUT = expand(
-    "output/structure_{thing}",
+    "paper-output/structure_{thing}",
     thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "tableS3_d_info.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
 
 #rule all:
@@ -25,7 +25,7 @@ def indexish(items, item, default=-1):
 
 rule structure_output_fig1b:
     """Summary table of antibody sequence characteristics"""
-    output: "output/structure_fig1b.csv"
+    output: "paper-output/structure_fig1b.csv"
     input: "analysis/isolates/summary.csv"
     run:
         mabs = [
@@ -55,7 +55,7 @@ rule structure_output_fig1b:
 
 rule structure_output_fig2a:
     """Summary table of antibody heavy chain germline sequence usage"""
-    output: "output/structure_fig2a.csv"
+    output: "paper-output/structure_fig2a.csv"
     input: "analysis/isolates/summary.csv"
     run:
         mabs = [
@@ -80,7 +80,7 @@ rule structure_output_fig2a:
 
 rule structure_output_tableS2:
     """Summary table of animal, antibody, and lineage information"""
-    output: "output/structure_tableS2.csv"
+    output: "paper-output/structure_tableS2.csv"
     input: "analysis/isolates/summary.csv"
     run:
         lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
@@ -136,11 +136,11 @@ def params_for_figS3(w):
     return {"lineage": lineage, "d_pos": d_pos, "gap_pos": gap_pos, "gap_len": gap_len}
 
 rule structure_output_figS3:
-    input: expand("output/structure_figS3{panel}.fa", panel = ["A", "B", "C"])
+    input: expand("paper-output/structure_figS3{panel}.fa", panel = ["A", "B", "C"])
 
 rule structure_output_figS3panel:
     """FASTA for VDJ segments, intermediate lineage members, and mature isolated antibody for one lineage"""
-    output: "output/structure_figS3{panel}.fa"
+    output: "paper-output/structure_figS3{panel}.fa"
     input: unpack(input_for_figS3)
     params: params_for_figS3
     shell:
@@ -151,7 +151,7 @@ rule structure_output_figS3panel:
 
 rule structure_output_tableS3_d_info:
     """CSV of the raw germline D information that we summarized in table S3"""
-    output: "output/structure_tableS3_d_info.csv"
+    output: "paper-output/structure_tableS3_d_info.csv"
     input: "analysis/aggregate-d/all.csv"
     run:
         subjects = [
