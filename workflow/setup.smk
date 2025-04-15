@@ -48,7 +48,7 @@ METADATA = load_metadata()
 
 # from `sha256sum filenames`
 def load_checksums():
-    with open("sha256.txt") as f_in:
+    with open("metadata/sha256.txt") as f_in:
         pairs = dict(re.fullmatch(r"([^ ]+) +(.*)", x.strip()).groups()[::-1] for x in f_in)
     return pairs
 
