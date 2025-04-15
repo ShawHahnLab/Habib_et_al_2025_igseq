@@ -11,19 +11,23 @@ GERMLINE="germline-genbank"
 RAMESH_D = ["IGHD1-1*01", "IGHD1-39*01", "IGHD3-26*02", "IGHD4-27*02"]
 
 wildcard_constraints:
+    # project metadata
     sample="[-A-Za-z0-9]+",
     specimen="[A-Za-z0-9]+",
     subject="[A-Za-z0-9]+",
+    antibody_isolate=r"[-_A-Za-z0-9\.]+",
+    antibody_lineage=r"[-_A-Za-z0-9\.]+",
+    # antibody concepts
     chain="(heavy|light)",
     celltype="igm|igg",
     chain_type="(alpha|delta|gamma|mu|epsilon|kappa|lambda)",
     locus="(IGH|IGK|IGL)",
     segment="(V|D|J)",
     antibody_type="(IgA|IgD|IgG|IgM|IgE)",
-    antibody_isolate=r"[-_A-Za-z0-9\.]+",
-    antibody_lineage=r"[-_A-Za-z0-9\.]+",
-    accession="[^/]+",
-    name="[^/]+",
+    # other flow control
+    name="[^/]+", # any match limited to one directory
+    accession="[^/]+", # ditto, for accession numbers specifically
+    word="[A-Za-z]+", # just letters
 
 def load_metadata():
     metadata = {}
