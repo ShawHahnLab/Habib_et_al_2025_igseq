@@ -9,24 +9,24 @@ rule all_demux:
 rule all_merge:
     input: TARGET_MERGE
 
-if RUNDATA == "sra":
-    # if RUNDATA is "sra", we'll shortcut the first couple of processing steps
-    # (custom bcl2fastq and demultiplexing) and download demultiplexed files
-    # from the SRA
+if config["rundata"] == "sra":
+    # if "sra", we'll shortcut the first couple of processing steps (custom
+    # bcl2fastq and demultiplexing) and download demultiplexed files from the
+    # SRA
     TARGET_SRA = expand("analysis/from-sra/{srr}_{num}.fastq.gz", srr=[row["Run"] for row in METADATA["biosamples"]], num=[1, 2])
     rule all_sra:
         input: TARGET_SRA
 else:
-    # If RUNDATA contains anything other than literally "sra", take it to be a
-    # path where Illumina run directories are stored, and define rules to use
-    # those files for the initial processing.
+    # If anything other than literally "sra", take it to be a path where
+    # Illumina run directories are stored, and define rules to use those files
+    # for the initial processing.
     rule getreads:
         output:
             outdir=directory("analysis/reads/{run}"),
             r1="analysis/reads/{run}/Undetermined_S0_L001_R1_001.fastq.gz",
             i1="analysis/reads/{run}/Undetermined_S0_L001_I1_001.fastq.gz",
             r2="analysis/reads/{run}/Undetermined_S0_L001_R2_001.fastq.gz"
-        input: ancient(f"{RUNDATA}/{{run}}")
+        input: ancient(f"{config['rundata']}/{{run}}")
         log:
             conda="analysis/reads/{run}/conda_build.txt"
         conda: "igseq.yml"
@@ -74,7 +74,7 @@ def input_for_demux_sample_link(w):
             break
     else:
         raise ValueError(w.sample)
-    if RUNDATA != "sra":
+    if config["rundata"] != "sra":
         runid = row["igseq_Run"]
         return {f"r{p}": f"analysis/demux-local/{runid}/{w.sample}.R{p}.fastq.gz" for p in (1, 2)}
     else:

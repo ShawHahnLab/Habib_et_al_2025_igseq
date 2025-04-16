@@ -107,9 +107,9 @@ rule sonar_module_1:
         fasta=WD_SONAR/"output/sequences/nucleotide/{specimen}_goodVJ_unique.fa",
         rearr=WD_SONAR/"output/tables/{specimen}_rearrangements.tsv"
     input:
-        V=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta",
-        D=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/D.fasta",
-        J=f"analysis/{GERMLINE}/{{subject}}.{{locus}}/J.fasta",
+        V=f"analysis/{config['germline']}/{{subject}}.{{locus}}/V.fasta",
+        D=f"analysis/{config['germline']}/{{subject}}.{{locus}}/D.fasta",
+        J=f"analysis/{config['germline']}/{{subject}}.{{locus}}/J.fasta",
         reads="analysis/sonar-input/{specimen}.{locus}.fastq.gz"
     log: (WD_SONAR/"log.txt").resolve()
     singularity: "docker://jesse08/sonar"
@@ -165,7 +165,7 @@ rule sonar_gather_mature:
 rule sonar_v_trunc:
     """Truncate germline V sequences through the conserved C just before CDR3, for SONAR"""
     output: WD_SONAR/"germline/V.cysTruncated.fasta"
-    input: f"analysis/{GERMLINE}/{{subject}}.{{locus}}/V.fasta"
+    input: f"analysis/{config['germline']}/{{subject}}.{{locus}}/V.fasta"
     conda: "igseq.yml"
     shell: "scripts/truncate_v.py {input} {output}"
 
@@ -330,7 +330,7 @@ def input_for_sonar_module_3_igphyml(w):
     proj = "longitudinal.{word}.{antibody_lineage}"
     sonar_dir = "analysis/sonar/{subject}.{locus}/" + proj + "/"
     if w.word == "auto":
-        targets = {seg: f"analysis/{GERMLINE}/{w.subject}.{w.locus}/{seg}.fasta" for seg in segs}
+        targets = {seg: f"analysis/{config['germline']}/{w.subject}.{w.locus}/{seg}.fasta" for seg in segs}
         targets.update({
             "collected": sonar_dir + "output/sequences/nucleotide/" + proj + "-collected.fa",
             "natives": sonar_dir + "mab/mab.{antibody_lineage}.fasta"

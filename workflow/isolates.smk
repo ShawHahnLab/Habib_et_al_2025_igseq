@@ -35,7 +35,7 @@ rule igblast_isolates:
     output: "analysis/isolates/{subject}.{locus}/igblast.tsv"
     input:
         query="analysis/isolates/{subject}.{locus}/query.fasta",
-        ref=expand("analysis/{germline}/{{subject}}.{{locus}}/{segment}.fasta", germline=GERMLINE, segment=["V", "D", "J"])
+        ref=expand("analysis/{germline}/{{subject}}.{{locus}}/{segment}.fasta", germline=config["germline"], segment=["V", "D", "J"])
     params:
         ref=lambda w, input: Path(input.ref[0]).parent
     conda: "igseq.yml"

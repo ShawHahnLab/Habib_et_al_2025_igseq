@@ -3,13 +3,18 @@
 from collections import defaultdict
 import csv
 
+# (These Snakemake-managed configuration options can be set via snakemake on
+# the command line like:
+#
+#     snakemake --config germline=germline-genbank
+#
 # "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
 # "germline" to create them from scratch first
-GERMLINE = "germline-genbank"
+config["germline"] = config.get("germline", "germline-genbank")
 # "sra" to download raw read files from SRA, or a file path to process Illumina
 # run dir from
-#RUNDATA = "sra"
-RUNDATA = "/seq/runs"
+#config["rundata"] = config.get("rundata", "sra")
+config["rundata"] = config.get("rundata", "/seq/runs")
 
 # The Ramesh germline D sequences that we observed in the macaques that were
 # not present in KIMDB.
