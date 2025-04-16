@@ -1,10 +1,15 @@
 ### Overall workflow setup and metadata
 
+from collections import defaultdict
 import csv
 
 # "germline-genbank" to use readymade IgDiscover outputs from GenBank, or
 # "germline" to create them from scratch first
-GERMLINE="germline-genbank"
+GERMLINE = "germline-genbank"
+# "sra" to download raw read files from SRA, or a file path to process Illumina
+# run dir from
+#RUNDATA = "sra"
+RUNDATA = "/seq/runs"
 
 # The Ramesh germline D sequences that we observed in the macaques that were
 # not present in KIMDB.
@@ -17,6 +22,8 @@ wildcard_constraints:
     subject="[A-Za-z0-9]+",
     antibody_isolate=r"[-_A-Za-z0-9\.]+",
     antibody_lineage=r"[-_A-Za-z0-9\.]+",
+    run=r"[-_A-Z0-9]+",
+    rp="R[12]",
     # antibody concepts
     chain="(heavy|light)",
     celltype="igm|igg",
