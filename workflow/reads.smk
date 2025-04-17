@@ -102,8 +102,8 @@ rule trim:
         report2="analysis/trim/{sample}.cutadapt2.json",
         counts="analysis/trim/{sample}.trim.counts.csv"
     input:
-        r1="analysis/demux/{sample}.R1.fastq.gz",
-        r2="analysis/demux/{sample}.R2.fastq.gz",
+        r1="analysis/demux-link/{sample}.R1.fastq.gz",
+        r2="analysis/demux-link/{sample}.R2.fastq.gz",
         samples="analysis/igseq_samples.csv"
     log:
         conda="analysis/trim/{sample}.trim.conda_build.txt"
