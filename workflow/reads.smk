@@ -1,6 +1,6 @@
 ### Basic read processing
 
-TARGET_DEMUX = expand("analysis/demux/{sample}.{rp}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]], rp=["R1", "R2"])
+TARGET_DEMUX = expand("analysis/demux-link/{sample}.{rp}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]], rp=["R1", "R2"])
 TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
 
 rule all_demux:
@@ -46,9 +46,9 @@ else:
         rule:
             name: f"demux_{runid}"
             output:
-                outdir=directory(f"analysis/demux-local/{runid}"),
+                outdir=directory(f"analysis/demux/{runid}"),
                 fqgz=expand(
-                    "analysis/demux-local/{run}/{samp}.{rp}.fastq.gz",
+                    "analysis/demux/{run}/{samp}.{rp}.fastq.gz",
                     run=runid, samp=samp_names, rp=["R1", "R2", "I1"])
             input:
                 reads=expand(
@@ -56,7 +56,7 @@ else:
                     run=runid, rp=["I1", "R1", "R2"]),
                 samples=ancient("analysis/igseq_samples.csv")
             log:
-                conda=f"analysis/demux-local/{runid}/conda_build.txt"
+                conda=f"analysis/demux/{runid}/conda_build.txt"
             conda: "igseq.yml"
             shell:
                 """
@@ -76,7 +76,7 @@ def input_for_demux_sample_link(w):
         raise ValueError(w.sample)
     if config["rundata"] != "sra":
         runid = row["igseq_Run"]
-        return {f"r{p}": f"analysis/demux-local/{runid}/{w.sample}.R{p}.fastq.gz" for p in (1, 2)}
+        return {f"r{p}": f"analysis/demux/{runid}/{w.sample}.R{p}.fastq.gz" for p in (1, 2)}
     else:
         sra_Run = row["Run"]
         return {f"r{p}": f"analysis/from-sra/{accession}.R{p}.fastq.gz" for p in (1, 2)}
@@ -85,8 +85,8 @@ rule demux_link:
     # symlink files to analysis/demux/{sample} via either locally-run
     # demultiplexing (if using raw Illumina run data) or SRA-downloaded files
     output:
-        r1="analysis/demux/{sample}.R1.fastq.gz",
-        r2="analysis/demux/{sample}.R2.fastq.gz"
+        r1="analysis/demux-link/{sample}.R1.fastq.gz",
+        r2="analysis/demux-link/{sample}.R2.fastq.gz"
     input: unpack(input_for_demux_sample_link)
     shell:
         """
