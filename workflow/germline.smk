@@ -1,5 +1,36 @@
 ### IgDiscover (individualized germline references with IgM reads)
 
+def make_germline_rules():
+    """Set up helper IgDiscover and MINING-D rules for each subject"""
+    subject_loci = defaultdict(set)
+    for row in METADATA["biosamples"]:
+        if "IgM" in row["igseq_Specimen_CellType"]:
+            subject = row["igseq_Specimen_Subject"]
+            locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
+            subject_loci[subject].add(locus)
+    for subject, loci in subject_loci.items():
+        targets_germline = expand("analysis/germline/{subject}.{locus}/{segment}.fasta",
+            subject=subject, locus=sorted(loci), segment=("V", "D", "J"))
+        rule:
+            name: f"germline_{subject}"
+            input: targets_germline
+        targets_miningd = expand("analysis/mining-d/{subject}.output.{pval}.txt",
+            subject=subject, pval=("default", "sensitive"))
+        rule:
+            name: f"miningd_{subject}"
+            input: targets_miningd
+        rule:
+            name: f"germline_etc_{subject}"
+            input: targets_germline + targets_miningd
+    subject = "5695"
+    targets_germline = expand("analysis/germline/{subject}.{locus}/{segment}.fasta",
+        subject=subject, locus=("IGH", "IGL"), segment=("V", "D", "J"))
+    rule:
+        name: f"germline_{subject}"
+        input: targets_germline
+
+make_germline_rules()
+
 def make_target_igdiscover():
     attrs = set()
     for row in METADATA["biosamples"]:
@@ -199,6 +230,8 @@ def input_for_miningd_get_cdrh3s(w):
     for attrs in METADATA["biosamples"]:
         if attrs["igseq_Specimen_Subject"] == w.subject and "IgM" in attrs["igseq_Specimen_CellType"]:
             specs.append(attrs["igseq_Specimen"])
+    if not specs:
+        raise ValueError(f"No specimens for MINING-D for {w.subject}?")
     return expand(
         "analysis/sonar/{subject}.IGH/{specimen}/output/tables/{specimen}_rearrangements.tsv",
         subject=w.subject, specimen=specs)
@@ -358,7 +391,7 @@ rule germline:
             cp {input.D} {output.D}
         """
 
-rule germline_5695:
+rule germline_link_5695:
     """Always use GenBank supplied IgDiscover files for 5695"""
     output:
         HV="analysis/germline/5695.IGH/V.fasta",
