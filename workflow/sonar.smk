@@ -4,15 +4,12 @@ from math import floor, log10
 
 def make_sonar_rules():
     """Set up helper SONAR rules for each subject"""
-    subject_locus_specs = {}
-    subject_locus_specs_igg = {}
+    # subject -> locus -> list of specimens
+    subject_locus_specs = defaultdict(lambda: defaultdict(list))
+    subject_locus_specs_igg = defaultdict(lambda: defaultdict(list))
     def gather(obj, row):
         subject = row["igseq_Specimen_Subject"]
         locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
-        if subject not in obj:
-            obj[subject] = {}
-        if locus not in obj[subject]:
-            obj[subject][locus] = []
         obj[subject][locus].append(row["igseq_Specimen"])
     for row in METADATA["biosamples"]:
         gather(subject_locus_specs, row)
