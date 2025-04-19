@@ -3,11 +3,8 @@
 # Some final summary outputs approximating what's shown in the structure paper itself.
 
 TARGET_STRUCTURE_OUTPUT = expand(
-    "paper-output/structure_{thing}",
+    "structure-paper/paper-output/structure_{thing}",
     thing=["fig1b.csv", "fig2a.csv", "tableS2.csv", "tableS3_d_info.csv", "figS3A.fa", "figS3B.fa", "figS3C.fa"])
-
-#rule all:
-#    input: TARGET_GERMLINE + TARGET_GERMLINE_GENBANK + TARGET_SONAR_2_ID_DIV + TARGET_IGBLAST_ISOLATES + TARGET_MININGD + TARGET_OUTPUT
 
 rule all_structure_output:
     input: TARGET_STRUCTURE_OUTPUT
@@ -25,7 +22,7 @@ def indexish(items, item, default=-1):
 
 rule structure_output_fig1b:
     """Summary table of antibody sequence characteristics"""
-    output: "paper-output/structure_fig1b.csv"
+    output: "structure-paper/paper-output/structure_fig1b.csv"
     input: "analysis/isolates/summary.csv"
     run:
         mabs = [
@@ -55,7 +52,7 @@ rule structure_output_fig1b:
 
 rule structure_output_fig2a:
     """Summary table of antibody heavy chain germline sequence usage"""
-    output: "paper-output/structure_fig2a.csv"
+    output: "structure-paper/paper-output/structure_fig2a.csv"
     input: "analysis/isolates/summary.csv"
     run:
         mabs = [
@@ -80,7 +77,7 @@ rule structure_output_fig2a:
 
 rule structure_output_tableS2:
     """Summary table of animal, antibody, and lineage information"""
-    output: "paper-output/structure_tableS2.csv"
+    output: "structure-paper/paper-output/structure_tableS2.csv"
     input: "analysis/isolates/summary.csv"
     run:
         lineages = ["6070-a", "42056-a", "42056-b", "5695-b", "T646-a",
@@ -122,7 +119,7 @@ def input_for_figS3(w):
     specimen = {"A": "RM42056WK72IGG", "B": "RM6561WK104IGG", "C": "RMV031WK56IGG"}[w.panel]
     targets = {
         "isolates": "metadata/isolates.csv",
-        "junctions": f"from-paper/figS3{w.panel}_intermediate_junctions.txt",
+        "junctions": f"structure-paper/from-structure-paper/figS3{w.panel}_intermediate_junctions.txt",
         "summary_by_lineage": "analysis/isolates/summary_by_lineage.csv",
         "v": f"analysis/sonar/{subject}.IGH/{specimen}/germline/V.cysTruncated.fasta",
         "sonar": f"analysis/sonar/{subject}.IGH/{specimen}/output/sequences/nucleotide/{specimen}_goodVJ_unique.fa"}
@@ -136,11 +133,11 @@ def params_for_figS3(w):
     return {"lineage": lineage, "d_pos": d_pos, "gap_pos": gap_pos, "gap_len": gap_len}
 
 rule structure_output_figS3:
-    input: expand("paper-output/structure_figS3{panel}.fa", panel = ["A", "B", "C"])
+    input: expand("structure-paper/paper-output/structure_figS3{panel}.fa", panel = ["A", "B", "C"])
 
 rule structure_output_figS3panel:
     """FASTA for VDJ segments, intermediate lineage members, and mature isolated antibody for one lineage"""
-    output: "paper-output/structure_figS3{panel}.fa"
+    output: "structure-paper/paper-output/structure_figS3{panel}.fa"
     input: unpack(input_for_figS3)
     params: params_for_figS3
     shell:
@@ -151,7 +148,7 @@ rule structure_output_figS3panel:
 
 rule structure_output_tableS3_d_info:
     """CSV of the raw germline D information that we summarized in table S3"""
-    output: "paper-output/structure_tableS3_d_info.csv"
+    output: "structure-paper/paper-output/structure_tableS3_d_info.csv"
     input: "analysis/aggregate-d/all.csv"
     run:
         subjects = [
@@ -168,10 +165,10 @@ rule structure_output_tableS3_d_info:
 ### Info from structure paper itself
 
 rule all_from_structure_paper:
-    input: expand("from-structure-paper/{name}.csv", name=["fig1b", "fig2a", "tableS2"])
+    input: expand("structure-paper/from-structure-paper/{name}.csv", name=["fig1b", "fig2a", "tableS2"])
 
 rule from_structure_paper:
     """Download CSV version of item from the structure paper from a copy in Google Sheets"""
-    output: "from-structure-paper/{name}.csv"
+    output: "structure-paper/from-structure-paper/{name}.csv"
     input: "metadata/structure_paper_google_sheets.yml"
     shell: "scripts/download_google_sheet.py {wildcards.name} {input} {output}"
