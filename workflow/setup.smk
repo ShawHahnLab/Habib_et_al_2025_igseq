@@ -86,7 +86,7 @@ rule genbank_igdiscover_5695:
 rule genbank_igdiscover:
     """The new IgDiscover sequences for all subjects"""
     output: "analysis/genbank/igdiscover.csv"
-    input: "genbank-placeholders/igdiscover.txt.gz"
+    input: "metadata/genbank-placeholders/igdiscover.txt.gz"
     params:
         pattern=r"Rhesus Macaque (?P<subject>.*) antibody germline sequence for "
             r"locus (?P<locus>IG[HKL]) (?P<segment>[VJ]) segment"
@@ -111,7 +111,7 @@ rule genbank_isolates_5695:
 rule genbank_isolates:
     """Paired heavy and light chain sequences across lineages"""
     output: "analysis/genbank/isolates.csv"
-    input: expand("genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
+    input: expand("metadata/genbank-placeholders/isolates_{chain}.txt.gz", chain=["heavy", "light"])
     params:
         pattern=r"Rhesus macaque (?P<subject>.*) antibody lineage (?P<antibody_lineage>.*) "
             r"antibody (?P<antibody_isolate>.*) isolated at (?P<timepoint>[0-9]+) weeks "
