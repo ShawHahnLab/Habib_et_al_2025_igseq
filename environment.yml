@@ -7,3 +7,4 @@ channels:
 dependencies:
   - snakemake>=8.16,<9
   - biopython>=1.84,<2
+  - sra-tools>=3.2,<4
