@@ -211,6 +211,10 @@ rule sonar_list_members_for_lineage:
                     else:
                         raise ValueError
 
+ruleorder: sonar_module_2_id_div_island > sonar_module_2_id_div_island_shortcut
+if config.get("sonar_member_list") == "shortcut":
+    ruleorder: sonar_module_2_id_div_island_shortcut > sonar_module_2_id_div_island
+
 # NOTE this step is interactive over X11
 ##
 # To get X working with Snakemake + singularity I had to append both of these
@@ -239,6 +243,27 @@ rule sonar_module_2_id_div_island:
             cd {params.wd_sonar}
             sonar get_island {params.input_iddiv} $mabargs --output {params.outprefix} --plotmethod binned
         """
+
+rule sonar_module_2_id_div_island_shortcut:
+    """Rather than the manually-guided lineage member process, use existing lists of members"""
+    # This lets you skip over the island selection steps above that require
+    # manual intervention.  It will confirm that the sequences for the given
+    # IDs match what we saw originally.
+    output:
+        seqids=WD_SONAR / "output/tables/islandSeqs_{antibody_lineage}.txt"
+    input:
+        member_lists="metadata/lineage_member_ids.csv"
+    run:
+        member_ids = []
+        with open(input.member_lists) as f_in:
+            for row in csv.DictReader(f_in):
+                if row["specimen"] == wildcards.specimen and \
+                        row["locus"] == wildcards.locus and \
+                        row["lineage"] == wildcards.antibody_lineage:
+                    member_ids.append(row["sequence_id"])
+        with open(output.seqids, "w") as f_out:
+            for seq_id in member_ids:
+                f_out.write(f"{seq_id}\n")
 
 rule sonar_module_2_id_div_getfasta:
     """SONAR 2: Extract FASTA matching selected island's seq IDs."""
@@ -308,9 +333,20 @@ def sonar_module_3_collect_param_seqs(_, input):
     args = [" --labels {key} --seqs {val}".format(key=key, val=Path(val).resolve()) for key, val in input.items()]
     return " ".join(args)
 
+def ensure_with_checksum(pattern):
+    def get_checksum(w):
+        out = expand(pattern, **dict(w))
+        checksum = CHECKSUMS[out[0]]
+        return checksum
+    if config.get("sonar_member_list") != "shortcut" and "longitudinal" in pattern:
+        return ensure(pattern, non_empty=True)
+    else:
+        return ensure(pattern, sha256=get_checksum)
+
 rule sonar_module_3_collect:
     output:
-        collected="analysis/sonar/{subject}.{locus}/longitudinal.{word}.{antibody_lineage}/output/sequences/nucleotide/longitudinal.{word}.{antibody_lineage}-collected.fa"
+        collected="analysis/sonar/{subject}.{locus}/longitudinal.{word}.{antibody_lineage}/output/sequences/nucleotide/longitudinal.{word}.{antibody_lineage}-collected.fa",
+        check_fasta=ensure_with_checksum("analysis/sonar/{subject}.{locus}/longitudinal.{word}.{antibody_lineage}/output/sequences/nucleotide/.check.fa")
     input: unpack(sonar_module_3_collect_inputs)
     singularity: "docker://jesse08/sonar"
     params:
@@ -318,8 +354,11 @@ rule sonar_module_3_collect:
         seqs=sonar_module_3_collect_param_seqs
     shell:
         """
-            cd {params.wd_sonar}
+            pushd {params.wd_sonar}
             sonar merge_time {params.seqs}
+            # (to check sequence content)
+            popd
+            cut -f 1 -d ' ' {output.collected} > {output.check_fasta}
         """
 
 def input_for_sonar_module_3_igphyml(w):

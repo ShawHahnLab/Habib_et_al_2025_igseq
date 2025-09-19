@@ -15,6 +15,11 @@ config["germline"] = config.get("germline", "germline-genbank")
 # run dir from
 #config["rundata"] = config.get("rundata", "sra")
 config["rundata"] = config.get("rundata", "/seq/runs")
+# "shortcut" to extract lineage members from repertoire results with prepared
+# lists from our own manually-guided identification (with confirmation that the
+# sequences match), or "full" to run that manually-guided process here using
+# SONAR's island selection procedure
+config["sonar_member_list"] = config.get("sonar_member_list", "shortcut")
 
 # The Ramesh germline D sequences that we observed in the macaques that were
 # not present in KIMDB.
@@ -60,7 +65,7 @@ METADATA = load_metadata()
 
 # from `sha256sum filenames`
 def load_checksums():
-    with open("metadata/sha256.txt") as f_in:
+    with open("workflow/sha256.txt") as f_in:
         pairs = dict(re.fullmatch(r"([^ ]+) +(.*)", x.strip()).groups()[::-1] for x in f_in)
     return pairs
 
