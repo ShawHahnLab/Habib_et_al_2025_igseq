@@ -2,9 +2,10 @@
 
 Analysis code and related metadata for the antibody lineage tracing aspect of
 our 2025 HIV/V2 apex antibody coevolution paper.  The workflow is built with
-[Snakemake] and [Python] to handle the steps of the analysis and [conda] for
-software dependency management.  This code makes use of [igseq] for some basic
-data processing steps, which handles [bcl2fastq] and custom Python code for
+[Snakemake] and [Python] to handle the steps of the analysis, [conda] for
+software dependency management, and [Singularity] for a [Docker] container for
+one aspect (SONAR).  This code makes use of [igseq] for some basic data
+processing steps, which handles [bcl2fastq] and custom Python code for
 specialized demultiplexing, [cutadapt] for adapter trimming, and [PEAR] for
 read merging.  (The material in this repository is largely a streamlined
 version of our [igseqhelper] workflow used for ongoing lineage tracing
@@ -42,7 +43,9 @@ File layout here:
 Software usage, assuming Linux and an existing [mamba] install for conda package
 management:
 
-    $ mamba env --update environment.yml # will create v2-apex-abs-paper environment
+    $ git clone https://github.com/ShawHahnLab/Habib_et_al_2025_igseq.git
+    $ cd Habib_et_al_2025_igseq
+    $ mamba env update --file environment.yml # will create v2-apex-abs-paper environment
     $ mamba activate v2-apex-abs-paper
     $ snakemake --use-conda --use-singularity {output file paths or snakemake rules}
 
@@ -89,6 +92,8 @@ rule in `workflow/sonar.smk`.)
 [Snakemake]: https://snakemake.readthedocs.io
 [Python]: https://www.python.org
 [conda]: https://conda.io
+[Singularity]: https://github.com/sylabs/singularity
+[Docker]: https://www.docker.com/
 [igseqhelper]: https://github.com/shawhahnlab/igseqhelper
 [igseq]: https://github.com/shawhahnlab/igseq
 [mamba]: https://mamba.readthedocs.io
