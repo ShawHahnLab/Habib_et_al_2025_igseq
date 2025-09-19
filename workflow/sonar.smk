@@ -252,7 +252,7 @@ rule sonar_module_2_id_div_island_shortcut:
     output:
         seqids=WD_SONAR / "output/tables/islandSeqs_{antibody_lineage}.txt"
     input:
-        member_lists="metadata/lineage_member_ids.csv"
+        member_lists="workflow/lineage_member_ids.csv"
     run:
         member_ids = []
         with open(input.member_lists) as f_in:
