@@ -305,8 +305,9 @@ def sonar_module_3_collect_inputs(w):
     #   8   "wk008"
     #  12   "wk012"
     timepoint_specs = {}
+    chain = {"IGH": "heavy", "IGK": "light", "IGL": "light"}[w.locus]
     for row in METADATA["biosamples"]:
-        if "IgG" in row["igseq_Specimen_CellType"] and w.subject == row["igseq_Specimen_Subject"]:
+        if "IgG" in row["igseq_Specimen_CellType"] and w.subject == row["igseq_Specimen_Subject"] and chain == row["igseq_Chain"]:
             tp_num = int(row["igseq_Specimen_Timepoint"])
             if tp_num in timepoint_specs and timepoint_specs[tp_num] != row['igseq_Specimen']:
                 raise ValueError(f"Multiple timepoints for {tp_num} for {row['igseq_Specimen']}")
