@@ -14,13 +14,20 @@ def make_results_rules():
     for row in METADATA["lineages"]:
         if row["subject"] == "5695":
             continue
-        targets = expand("results/{subject}/{antibody_lineage}/{antibody_lineage}_{chain}_{thing}",
-            subject=row["subject"],
-            antibody_lineage=row["antibody_lineage"],
-            chain=("heavy", "light"),
-            thing=("aligned.afa", "igphyml.tree", "collected.fa", "inferredAncestors.fa"))
+        lineage = row["antibody_lineage"]
+        targets = []
+        for chain in ("heavy", "light"):
+            targets_chain = expand("results/{subject}/{antibody_lineage}/{antibody_lineage}_{chain}_{thing}",
+                subject=row["subject"],
+                antibody_lineage=lineage,
+                chain=chain,
+                thing=("aligned.afa", "igphyml.tree", "collected.fa", "inferredAncestors.fa"))
+            targets += targets_chain
+            rule:
+                name: f"results_lineage_{lineage}_{chain}"
+                input: targets_chain
         rule:
-            name: f"results_lineage_{row['antibody_lineage']}"
+            name: f"results_lineage_{lineage}"
             input: targets
 
 make_results_rules()
