@@ -207,6 +207,13 @@ rule sonar_list_members_for_lineage:
                             f_out.write(f"{seqid}\n")
                             seen.add(seq)
                     elif wildcards.word == "fasta":
+                        if wildcards.name == "longitudinal.auto.6070-a" and wildcards.locus == "IGH":
+                            # (special case for 6070 heavy chain isolate seqs:
+                            # the one-NT-truncated sequences (in J just before
+                            # C) seem to crash IgPhyML, but extending by the
+                            # conserved NT at that position seems to work
+                            # around the problem.)
+                            seq += "A"
                         f_out.write(f">{seqid}\n{seq}\n")
                     else:
                         raise ValueError
