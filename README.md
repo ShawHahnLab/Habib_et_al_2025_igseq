@@ -31,7 +31,7 @@ File layout here:
    outputs
  * `workflow/`: Snakemake workflow files (.smk) and associated conda
    environment definitions (.yml)
- * `scripts/`
+ * `scripts/`: Python scripts used in the workflow steps
  * `environment.yml`: a top-level conda environment definition for the
    repository
  * `analysis/`: the Snakemake rules for the workflow will write analysis files
@@ -87,7 +87,21 @@ and associated files for lineage 6561-a, with automatic alignment and default
 Note that one step, selecting "islands" of lineage members from SONAR's ID/DIV
 plots, is interactive, and requires a graphical session for its interactive R
 plot for each sample and lineage.  (This is the `sonar_module_2_id_div_island`
-rule in `workflow/sonar.smk`.)
+rule in `workflow/sonar.smk`.)  If `--config sonar_member_list=shortcut` is
+used, the manual step is skipped and sequences are selected from a prepared
+[table of IDs](workflow/lineage_member_ids.csv).
+
+Configuration options that can be set with `--config key=value`, with defaults
+listed first:
+
+ * `rundata`: `sra` to download raw read files from SRA, or a file path to
+   process Illumina run directories from
+ * `germline`: `germline-genbank` to use readymade IgDiscover outputs from
+   GenBank, or `germline` to create them from scratch first
+ * `sonar_member_list`: `shortcut` to extract lineage members from repertoire
+   results with prepared lists from our own manually-guided identification
+   (with confirmation that the sequences match), or `full` to run that
+   manually-guided process here using SONAR's island selection procedure
 
 [Snakemake]: https://snakemake.readthedocs.io
 [Python]: https://www.python.org
