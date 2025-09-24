@@ -32,3 +32,5 @@ a5466ef1c0bde2aecd125d073d0a5f9b02b534756b59371d42a243b2af3fa8bf  analysis/sonar
 25c336f0ea64e2f8e784a8ea87e8b9f1c04a2347d156553863de06bf17929b79  analysis/sonar/V033.IGK/longitudinal.auto.V033-a/output/sequences/nucleotide/.check.fa
 68c35033fca93a5c74f485b3cc66066598a7aec4bc9f618bf7d31135c7060105  analysis/sonar/41328.IGH/longitudinal.auto.41328-a/output/sequences/nucleotide/.check.fa
 f84d42daca655ee6c85a95116d9945015129ba2856341b6ed65a6016ba657db8  analysis/sonar/41328.IGL/longitudinal.auto.41328-a/output/sequences/nucleotide/.check.fa
+161232da8db905d5da96784b898a37b29f1a8fbb0f60b8efdb123bd6388aad42  analysis/sonar/V031.IGH/longitudinal.auto.V031-a/output/sequences/nucleotide/.check.fa
+dea38fc85716e8f1e0674859327f7e8a5b65b0d6f595ea225030aa97a9160a00  analysis/sonar/V031.IGK/longitudinal.auto.V031-a/output/sequences/nucleotide/.check.fa
