@@ -13,8 +13,9 @@ analyses.)
 
 Associated information from the publication:
 
- * Antibody repertoire NGS SRA project: PRJNA1121265 (BioSamples TSV provided
-   here as [metadata/biosamples.tsv](metadata/biosamples.tsv))
+ * Antibody repertoire NGS SRA project: PRJNA1121265 (metadata and run
+   accession numbers provided here as
+   [metadata/biosamples.csv](metadata/biosamples.csv))
  * Mature antibody paired heavy and light chain GenBank entries: MT610888 -
    MT610895, PP909817 - PP910010 (provided here as metadata/isolates.csv)
  * Per-subject antibody germline sequence reference GenBank entries: PP648252 -

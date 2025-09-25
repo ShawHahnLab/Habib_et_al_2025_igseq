@@ -127,7 +127,7 @@ def input_for_igdiscover_input(w):
                 row["igseq_Specimen_Subject"] == w.subject:
             samples.append((
                 METADATA["igm_runs"].index(row["igseq_Run"]),
-                row["sample_name"]))
+                row["Sample Name"]))
     samples = [s[1] for s in sorted(samples)]
     return expand("analysis/merge/{sample}.fastq.gz", sample=samples)
 

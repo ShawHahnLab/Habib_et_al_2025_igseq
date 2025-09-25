@@ -1,7 +1,7 @@
 ### Basic read processing
 
-TARGET_DEMUX = expand("analysis/demux-link/{sample}.{rp}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]], rp=["R1", "R2"])
-TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["sample_name"] for row in METADATA["biosamples"]])
+TARGET_DEMUX = expand("analysis/demux-link/{sample}.{rp}.fastq.gz", sample=[row["Sample Name"] for row in METADATA["biosamples"]], rp=["R1", "R2"])
+TARGET_MERGE = expand("analysis/merge/{sample}.fastq.gz", sample=[row["Sample Name"] for row in METADATA["biosamples"]])
 
 rule all_demux:
     input: TARGET_DEMUX
@@ -42,7 +42,7 @@ else:
     for row in METADATA["biosamples"]:
         by_run[row["igseq_Run"]].append(row)
     for runid, rows in by_run.items():
-        samp_names = [row["sample_name"] for row in rows]
+        samp_names = [row["Sample Name"] for row in rows]
         rule:
             name: f"demux_{runid}"
             output:
@@ -70,7 +70,7 @@ rule sra:
 
 def input_for_demux_sample_link(w):
     for row in METADATA["biosamples"]:
-        if row["sample_name"] == w.sample:
+        if row["Sample Name"] == w.sample:
             break
     else:
         raise ValueError(w.sample)
@@ -79,7 +79,7 @@ def input_for_demux_sample_link(w):
         return {f"r{p}": f"analysis/demux/{runid}/{w.sample}.R{p}.fastq.gz" for p in (1, 2)}
     else:
         sra_Run = row["Run"]
-        return {f"r{p}": f"analysis/from-sra/{accession}.R{p}.fastq.gz" for p in (1, 2)}
+        return {f"r{p}": f"analysis/from-sra/{sra_Run}_{p}.fastq.gz" for p in (1, 2)}
 
 rule demux_link:
     # symlink files to analysis/demux/{sample} via either locally-run
@@ -121,7 +121,7 @@ rule trim:
 
 rule igseq_samples:
     output: "analysis/igseq_samples.csv"
-    input: "metadata/biosamples.tsv"
+    input: "metadata/biosamples.csv"
     run:
         with open(input[0]) as f_in, open(output[0], "w") as f_out:
             writer = csv.DictWriter(
@@ -129,9 +129,9 @@ rule igseq_samples:
                 ["Sample", "Run", "Specimen", "BarcodeFwd", "BarcodeRev", "Chain", "Type"],
                 lineterminator="\n")
             writer.writeheader()
-            for row in csv.DictReader(f_in, delimiter="\t"):
+            for row in csv.DictReader(f_in):
                 row_out = {}
-                row["igseq_Sample"] = row["sample_name"]
+                row["igseq_Sample"] = row["Sample Name"]
                 for key, val in row.items():
                     key2 = key.removeprefix("igseq_")
                     if key2 in writer.fieldnames:

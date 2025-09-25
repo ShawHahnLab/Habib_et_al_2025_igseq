@@ -71,7 +71,7 @@ def input_for_sonar_input(w):
     for row in METADATA["biosamples"]:
         locus = {"kappa": "IGK", "lambda": "IGL"}.get(row["igseq_Type"], "IGH")
         if row["igseq_Specimen"] == w.specimen and locus == w.locus:
-            samples.append(row["sample_name"])
+            samples.append(row["Sample Name"])
     return expand("analysis/merge/{sample}.fastq.gz", sample=samples)
 
 rule all_sonar_module_1:
