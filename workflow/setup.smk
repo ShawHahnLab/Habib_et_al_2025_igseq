@@ -13,8 +13,7 @@ import csv
 config["germline"] = config.get("germline", "germline-genbank")
 # "sra" to download raw read files from SRA, or a file path to process Illumina
 # run dir from
-#config["rundata"] = config.get("rundata", "sra")
-config["rundata"] = config.get("rundata", "/seq/runs")
+config["rundata"] = config.get("rundata", "sra")
 # "shortcut" to extract lineage members from repertoire results with prepared
 # lists from our own manually-guided identification (with confirmation that the
 # sequences match), or "full" to run that manually-guided process here using
