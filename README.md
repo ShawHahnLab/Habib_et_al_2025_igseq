@@ -14,13 +14,15 @@ analyses.)
 Associated information from the publication:
 
  * Antibody repertoire NGS SRA project: PRJNA1121265 (BioSamples TSV provided
-   here as metadata/biosamples.tsv)
+   here as [metadata/biosamples.tsv](metadata/biosamples.tsv))
  * Mature antibody paired heavy and light chain GenBank entries: MT610888 -
    MT610895, PP909817 - PP910010 (provided here as metadata/isolates.csv)
  * Per-subject antibody germline sequence reference GenBank entries: PP648252 -
-   PP649987 (provided here as metadata/igdiscover.csv)
+   PP649987 (provided here as
+   [metadata/igdiscover.csv](metadata/igdiscover.csv))
  * Antibody lineage UCA inferred heavy and light chain GenBank entries:
-   PV467379 - PV467402
+   PV467379 - PV467402 (provided here via
+   [metadata/lineages.csv](metadata/lineages.csv))
 
 File layout here:
 
