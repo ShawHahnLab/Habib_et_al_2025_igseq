@@ -72,6 +72,8 @@ Some key processing rules, named by subject or lineage:
     sonar_module_1_{subject}
     sonar_module_2_id_div_{subject}
     sonar_module_3_igphyml_{lineage}
+    results_subject_{subject}
+    results_lineage_{lineage}
 
 For example:
 
@@ -94,7 +96,7 @@ Configuration options that can be set with `--config key=value`, with defaults
 listed first:
 
  * `rundata`: `sra` to download raw read files from SRA, or a file path to
-   process Illumina run directories from
+   process raw data from Illumina run directories
  * `germline`: `germline-genbank` to use readymade IgDiscover outputs from
    GenBank, or `germline` to create them from scratch first
  * `sonar_member_list`: `shortcut` to extract lineage members from repertoire

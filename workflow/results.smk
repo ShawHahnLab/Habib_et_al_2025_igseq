@@ -1,19 +1,14 @@
 ### gathering final results in one place
 
-TARGET_RESULTS_LINEAGES = expand(
-    expand("results/{subject}/{antibody_lineage}/{antibody_lineage}_{{chain}}_igphyml.tree",
-    zip,
-    subject=[row["subject"] for row in METADATA["lineages"] if row["subject"] != "5695"],
-    antibody_lineage=[row["antibody_lineage"] for row in METADATA["lineages"] if row["subject"] != "5695"]),
-    chain=("heavy", "light"))
-
-rule all_results:
-    input: TARGET_RESULTS_LINEAGES
-
 def make_results_rules():
+    """Set up helper rules for each applicable subject and lineage plus all combined results"""
+    subject_loci = defaultdict(set)
+    targets_lineage = []
     for row in METADATA["lineages"]:
         if row["subject"] == "5695":
             continue
+        subject_loci[row["subject"]].add("IGH")
+        subject_loci[row["subject"]].add(row["light_locus"])
         lineage = row["antibody_lineage"]
         targets = []
         for chain in ("heavy", "light"):
@@ -26,13 +21,42 @@ def make_results_rules():
             rule:
                 name: f"results_lineage_{lineage}_{chain}"
                 input: targets_chain
+            targets_lineage += targets
         rule:
             name: f"results_lineage_{lineage}"
             input: targets
+    rule all_results_lineage:
+        input: targets_lineage
+    targets_subject = []
+    for subject, loci in subject_loci.items():
+        loci = sorted(loci)
+        targets = expand(
+            "results/{subject}/{subject}.germline.{locus}{segment}.fasta",
+            subject=subject, locus=loci, segment=("V", "J")) + expand(
+            "results/{subject}/{subject}.miningd.{pval}.txt",
+            subject=subject, pval=("default", "sensitive"))
+        rule:
+            name: f"results_subject_{subject}"
+            input: targets
+        targets_subject += targets
+    rule all_results_subject:
+        input: targets_subject
+    rule all_results:
+        input: targets_subject + targets_lineage
 
 make_results_rules()
 
 # Subject summary rules
+
+rule results_subject_germline:
+    output: "results/{subject}/{subject}.germline.{locus}{segment}.fasta"
+    input: "analysis/germline/{subject}.{locus}/{segment}.fasta"
+    shell: "cp {input} {output}"
+
+rule results_subject_miningd:
+    output: "results/{subject}/{subject}.miningd.{pval}.txt"
+    input: "analysis/mining-d/{subject}.output.{pval}.txt"
+    shell: "cp {input} {output}"
 
 # Antibody Lineage summary rules
 
