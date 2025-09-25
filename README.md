@@ -37,8 +37,7 @@ File layout here:
  * `analysis/`: the Snakemake rules for the workflow will write analysis files
    to subdirectories here
  * `structure-paper/`: text equivalents of a few items from our closely-related
-   V2 apex antibody structure paper (preprint at [10.1101/2024.06.11.598384]),
-   and recreated outputs with code here
+   [V2 apex antibody structure paper], and recreated outputs with code here
 
 Software usage, assuming Linux and an existing [mamba] install for conda package
 management:
@@ -114,4 +113,4 @@ listed first:
 [bcl2fastq]: https://support.illumina.com/sequencing/sequencing_software/bcl2fastq-conversion-software.html
 [cutadapt]: https://github.com/marcelm/cutadapt
 [PEAR]: https://cme.h-its.org/exelixis/web/software/pear/doc.html
-[10.1101/2024.06.11.598384]: https://doi.org/10.1101/2024.06.11.598384
+[V2 apex antibody structure paper]: https://doi.org/10.1084/jem.20250638
